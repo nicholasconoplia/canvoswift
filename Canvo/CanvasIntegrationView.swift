@@ -717,7 +717,11 @@ struct CanvasIntegrationView: View {
     
     private func saveCredentials() {
         let apiKeyData = apiKey.data(using: .utf8) ?? Data()
-        KeychainManager.save(key: "canvasApiKey", data: apiKeyData)
+        let saveSuccessful = KeychainManager.save(key: "canvasApiKey", data: apiKeyData)
+        if !saveSuccessful {
+            print("Error: Failed to save API key to Keychain.")
+            // Optionally, you could show an error message to the user here
+        }
         
         let defaults = UserDefaults.standard
         defaults.set(effectiveCanvasURL, forKey: "canvasURL")
@@ -1131,7 +1135,7 @@ class CanvasAPIService {
     // Helper to handle API responses
      private func handleResponse<T: Decodable>(data: Data?, response: URLResponse?, error: Error?, completion: @escaping (Result<T, Error>) -> Void) {
          if let error = error {
-             print("API Request Error: \(error.localizedDescription)")
+             // print("API Request Error: \(error.localizedDescription)") // Commented out for preview
              completion(.failure(error))
              return
          }
@@ -1141,11 +1145,11 @@ class CanvasAPIService {
               return
          }
 
-         print("API Response Status Code: \(httpResponse.statusCode)")
+         // print("API Response Status Code: \(httpResponse.statusCode)") // Commented out for preview
 
          guard (200...299).contains(httpResponse.statusCode) else {
              let statusCodeError = NSError(domain: "CanvasAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "API Error: Status Code \(httpResponse.statusCode)"])
-             print("API Status Code Error: \(httpResponse.statusCode)")
+             // print("API Status Code Error: \(httpResponse.statusCode)") // Commented out for preview
              completion(.failure(statusCodeError))
              return
          }
@@ -1155,7 +1159,8 @@ class CanvasAPIService {
              return
          }
          
-         // Print raw response for debugging
+         // Print raw response for debugging - Commented out for preview
+         /*
          if let jsonString = String(data: data, encoding: .utf8) {
              print("Raw API Data (preview): \(String(jsonString.prefix(200)))...")
              // Check for potential duplicate keys in the JSON
@@ -1172,6 +1177,7 @@ class CanvasAPIService {
                 }
             }
          }
+         */
          
          do {
              let decoder = JSONDecoder()
@@ -1180,14 +1186,15 @@ class CanvasAPIService {
              // Make the decoder more lenient for key conversion - will convert camelCase to snake_case if needed
              decoder.keyDecodingStrategy = .convertFromSnakeCase
              
-             // Try to decode using print statements to catch any errors
-             print("About to decode JSON data to \(T.self)")
+             // Try to decode using print statements to catch any errors - Commented out for preview
+             // print("About to decode JSON data to \(T.self)")
              let decodedObject = try decoder.decode(T.self, from: data)
-             print("Successfully decoded object of type \(T.self)")
+             // print("Successfully decoded object of type \(T.self)")
              completion(.success(decodedObject))
          } catch let decodingError {
-              print("API Decoding Error: \(decodingError)")
+              // print("API Decoding Error: \(decodingError)") // Commented out for preview
              // Provide more context on decoding errors
+             /*
              if let jsonString = String(data: data, encoding: .utf8) {
                  print("Failed to decode JSON snippet: \(String(jsonString.prefix(500)))...")
              }
@@ -1198,7 +1205,7 @@ class CanvasAPIService {
                  let isObject = firstChar == UInt8(ascii: "{") && lastChar == UInt8(ascii: "}")
                  print("JSON structure appears to be: \(isArray ? "array" : isObject ? "object" : "unknown")")
              }
-             
+             */
              completion(.failure(decodingError))
          }
      }
