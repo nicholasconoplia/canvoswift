@@ -246,9 +246,10 @@ class CanvasIntegrationViewModel: ObservableObject {
     
     // Fetch all courses with pagination
     private func fetchAllCourses(endpoint: String, completion: @escaping (Bool) -> Void) {
-        // Build URL with minimal parameters for maximum compatibility
+        // Build URL - ensure we're following the pattern from the working React implementation
         let baseURL = "\(effectiveCanvasURL)\(endpoint)"
-        // Remove include[] parameters for simplicity, as they might cause issues
+        
+        // Looking at the React implementation, use a simpler approach first
         let urlString = "\(baseURL)?per_page=100"
         
         print("[Canvas API] Requesting courses from: \(urlString)")
@@ -266,27 +267,36 @@ class CanvasIntegrationViewModel: ObservableObject {
     
     // Recursively fetch course pages
     private func fetchCoursesPage(url: URL, completion: @escaping (Bool) -> Void) {
+        // Create a proper request following the React Native implementation
         var request = URLRequest(url: url)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        // Content-Type is generally not needed for GET requests, but keep it for now
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type") 
+        
+        // Don't set Content-Type for GET requests as it's not needed and
+        // could cause issues with some Canvas implementations
+        
         request.httpMethod = "GET"
-        request.timeoutInterval = 30 // Increase timeout
+        request.timeoutInterval = 30
         
         print("[Canvas API] Making request to: \(url.absoluteString)")
-        print("[Canvas API] With headers: \(request.allHTTPHeaderFields ?? [:])")
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            // Capture the values we need before dispatching to main thread
+            let errorToReport = error
+            let responseToUse = response
+            let dataToUse = data
+            
             DispatchQueue.main.async {
-                if let error = error {
+                if let error = errorToReport {
                     self.errorMessage = "Network error: \(error.localizedDescription)"
                     print("[Canvas API] Network error: \(error)")
                     completion(false)
                     return
                 }
                 
-                guard let httpResponse = response as? HTTPURLResponse else {
+                guard let httpResponse = responseToUse as? HTTPURLResponse else {
                     self.errorMessage = "Invalid response from server."
                     print("[Canvas API] Invalid response type")
                     completion(false)
@@ -294,89 +304,130 @@ class CanvasIntegrationViewModel: ObservableObject {
                 }
                 
                 print("[Canvas API] Response status code: \(httpResponse.statusCode)")
-                print("[Canvas API] Response headers: \(httpResponse.allHeaderFields)")
                 
+                // Handle HTTP errors with specific messages
                 guard (200...299).contains(httpResponse.statusCode) else {
-                    let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "(no response body)"
-                    // Provide more specific error based on status code
+                    let body = dataToUse.flatMap { String(data: $0, encoding: .utf8) } ?? "(no response body)"
                     switch httpResponse.statusCode {
-                    case 401: // Unauthorized
-                        self.errorMessage = "Unauthorized (401). Please check your API key or regenerate it."
-                    case 403: // Forbidden
-                        self.errorMessage = "Forbidden (403). Your API key may lack permissions for this request."
-                    case 404: // Not Found
-                        self.errorMessage = "API endpoint not found (404). The Canvas URL or path might be incorrect."
+                    case 401:
+                        self.errorMessage = "Unauthorized. Please check your API key."
+                    case 403:
+                        self.errorMessage = "Forbidden. Your API key may not have sufficient permissions."
+                    case 404:
+                        self.errorMessage = "Not Found. The API endpoint doesn't exist."
                     default:
                         self.errorMessage = "API Error (\(httpResponse.statusCode)): \(body.prefix(200))"
                     }
-                    print("[Canvas API] Error response (\(httpResponse.statusCode)): \(body)")
+                    print("[Canvas API] Error response: \(body)")
                     completion(false)
                     return
                 }
                 
                 guard let data = data, !data.isEmpty else {
-                    self.errorMessage = "Received empty data from Canvas."
+                    self.errorMessage = "No data returned from Canvas."
                     print("[Canvas API] Empty data received")
                     completion(false)
                     return
                 }
                 
-                // Print complete response data for debugging
-                if let jsonString = String(data: data, encoding: .utf8) {
-                    print("[Canvas API] Full response: \(jsonString)")
-                }
-                
-                // Try multiple decoding approaches
+                // Following the React Native implementation, try to decode the JSON
                 do {
-                    // Attempt 1: Try to decode as array first
-                    if let fetchedCourses = try? JSONDecoder().decode([CanvasCourse].self, from: data) {
-                        print("[Canvas API] Successfully decoded \(fetchedCourses.count) courses as array")
-                        self.courses.append(contentsOf: fetchedCourses)
-                        // ... (pagination logic remains the same)
-                        if let linkHeader = httpResponse.allHeaderFields["Link"] as? String {
-                            if let nextPageURL = self.extractNextPageURL(from: linkHeader) {
+                    let json = try JSONSerialization.jsonObject(with: data)
+                    
+                    // Print for debugging
+                    if let jsonString = String(data: data, encoding: .utf8) {
+                        let previewLength = min(200, jsonString.count)
+                        let preview = String(jsonString.prefix(previewLength))
+                        print("[Canvas API] Response preview: \(preview)...")
+                    }
+                    
+                    // Try to decode as array of courses first
+                    if let coursesArray = json as? [[String: Any]] {
+                        do {
+                            let jsonData = try JSONSerialization.data(withJSONObject: coursesArray)
+                            let decodedCourses = try JSONDecoder().decode([CanvasCourse].self, from: jsonData)
+                            self.courses.append(contentsOf: decodedCourses)
+                            
+                            // Check for pagination
+                            if let linkHeader = httpResponse.allHeaderFields["Link"] as? String,
+                               let nextPageURL = self.extractNextPageURL(from: linkHeader) {
                                 self.fetchCoursesPage(url: nextPageURL) { success in
                                     completion(success)
                                 }
                                 return
                             }
+                            
+                            print("[Canvas API] Successfully loaded \(self.courses.count) courses")
+                            completion(true)
+                            return
+                        } catch {
+                            print("[Canvas API] Failed to decode courses array: \(error)")
+                            // Continue to try other formats
                         }
-                        print("[Canvas API] Completed fetching \(self.courses.count) courses")
-                        completion(true)
-                        return
                     }
                     
-                    // Attempt 2: Try to decode as object with courses array
-                    do {
-                        let json = try JSONSerialization.jsonObject(with: data)
-                        print("[Canvas API] JSON structure type: \(type(of: json))")
-                        if let jsonObject = json as? [String: Any] {
-                            print("[Canvas API] Available JSON keys: \(jsonObject.keys.joined(separator: ", "))")
-                            if let coursesData = jsonObject["courses"] as? [[String: Any]],
-                               let repackagedData = try? JSONSerialization.data(withJSONObject: coursesData),
-                               let fetchedCourses = try? JSONDecoder().decode([CanvasCourse].self, from: repackagedData) {
-                                print("[Canvas API] Successfully decoded \(fetchedCourses.count) courses from 'courses' object")
-                                self.courses.append(contentsOf: fetchedCourses)
-                                // Add pagination check for this format if needed based on logs
-                                completion(true)
-                                return
+                    // If the above fails, try as a dictionary with a courses key
+                    if let coursesDict = json as? [String: Any], 
+                       let coursesArray = coursesDict["courses"] as? [[String: Any]] {
+                        do {
+                            let jsonData = try JSONSerialization.data(withJSONObject: coursesArray)
+                            let decodedCourses = try JSONDecoder().decode([CanvasCourse].self, from: jsonData)
+                            self.courses.append(contentsOf: decodedCourses)
+                            print("[Canvas API] Successfully loaded \(decodedCourses.count) courses from nested data")
+                            completion(true)
+                            return
+                        } catch {
+                            print("[Canvas API] Failed to decode nested courses: \(error)")
+                        }
+                    }
+                    
+                    // If we got here, we couldn't decode in a familiar format
+                    // IMPORTANT: React Native implemented a more flexible parsing approach
+                    // Let's try a more manual approach for USyd's API
+                    if let jsonDict = json as? [String: Any] {
+                        print("[Canvas API] Available JSON keys: \(jsonDict.keys.joined(separator: ", "))")
+                        
+                        // Extract courses data from any potential structure
+                        let possibleCourseArrays = self.findCoursesArrayInJson(jsonDict)
+                        if !possibleCourseArrays.isEmpty {
+                            let coursesArray = possibleCourseArrays[0] // Use the first candidate
+                            do {
+                                // Create more flexible course objects
+                                var simplifiedCourses: [CanvasCourse] = []
+                                
+                                for courseDict in coursesArray {
+                                    if let id = courseDict["id"] as? Int,
+                                       let name = courseDict["name"] as? String {
+                                        // Create a minimal course object with just required fields
+                                        let course = CanvasCourse(
+                                            id: id,
+                                            name: name,
+                                            enrollments: nil,
+                                            start_at: courseDict["start_at"] as? String,
+                                            end_at: courseDict["end_at"] as? String
+                                        )
+                                        simplifiedCourses.append(course)
+                                    }
+                                }
+                                
+                                if !simplifiedCourses.isEmpty {
+                                    self.courses.append(contentsOf: simplifiedCourses)
+                                    print("[Canvas API] Manually extracted \(simplifiedCourses.count) courses")
+                                    completion(true)
+                                    return
+                                }
+                            } catch {
+                                print("[Canvas API] Failed during manual course extraction: \(error)")
                             }
                         }
-                    } catch {
-                        print("[Canvas API] JSON parsing for object structure failed: \(error)")
                     }
                     
-                    // If decoding fails after trying both formats
-                    let preview = String(data: data, encoding: .utf8)?.prefix(500) ?? "(invalid data)"
-                    print("[Canvas API] Failed to decode response with known formats. Preview: \(preview)...")
-                    self.errorMessage = "Could not parse the response from Canvas. The data format might be unexpected."
+                    // If all attempts failed
+                    self.errorMessage = "Unable to parse Canvas data. The format is unexpected."
                     completion(false)
-                    
                 } catch {
-                    // This catch block might be redundant now due to the above handling,
-                    // but kept as a safeguard.
-                    print("[Canvas API] Unhandled decoding error: \(error)")
-                    self.errorMessage = "Failed to decode courses: \(error.localizedDescription)"
+                    print("[Canvas API] JSON parsing error: \(error)")
+                    self.errorMessage = "Failed to decode Canvas data: \(error.localizedDescription)"
                     completion(false)
                 }
             }
@@ -401,6 +452,32 @@ class CanvasIntegrationViewModel: ObservableObject {
         }
         
         return nil
+    }
+    
+    // Helper method to recursively search for course arrays in JSON
+    private func findCoursesArrayInJson(_ json: [String: Any]) -> [[[String: Any]]] {
+        var results: [[[String: Any]]] = []
+        
+        // Check if this object has any arrays that look like courses
+        for (key, value) in json {
+            // If we found an array, check if it looks like courses
+            if let array = value as? [[String: Any]], !array.isEmpty {
+                // Check if the first item has id and name fields
+                if let firstItem = array.first, 
+                   (firstItem["id"] != nil || firstItem["ID"] != nil) && 
+                   (firstItem["name"] != nil || firstItem["NAME"] != nil) {
+                    results.append(array)
+                }
+            }
+            
+            // Check nested dictionaries
+            if let nestedDict = value as? [String: Any] {
+                let nestedResults = findCoursesArrayInJson(nestedDict)
+                results.append(contentsOf: nestedResults)
+            }
+        }
+        
+        return results
     }
     
     // Process the fetched courses (apply filters and fetch assignments)
@@ -453,42 +530,109 @@ class CanvasIntegrationViewModel: ObservableObject {
         }
         
         // When all assignments are fetched, update loading state
-        group.notify(queue: .main) {
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
             self.isLoading = false
             self.saveCanvasData()
         }
+        
+        group.notify(queue: .main, work: workItem)
     }
 
     func fetchAssignmentsForCourse(_ courseID: Int, completion: @escaping () -> Void = {}) {
+        // Following the React Native implementation approach
         let urlString = "\(effectiveCanvasURL)/api/v1/courses/\(courseID)/assignments"
         guard let url = URL(string: urlString) else {
             self.errorMessage = "Invalid assignments URL for course \(courseID)"
             completion()
             return
         }
+        
         var request = URLRequest(url: url)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpMethod = "GET"
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        
+        print("[Canvas API] Fetching assignments for course \(courseID)")
+        
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            // Capture the values we need before dispatching to main thread
+            let errorToReport = error
+            let responseToUse = response
+            let dataToUse = data
+            
             DispatchQueue.main.async {
-                if let error = error {
-                    self.errorMessage = "Error fetching assignments for course \(courseID): \(error.localizedDescription)"
+                if let error = errorToReport {
+                    self.errorMessage = "Error fetching assignments: \(error.localizedDescription)"
                     completion()
                     return
                 }
-                guard let data = data else {
-                    self.errorMessage = "No data returned for assignments in course \(courseID)"
+                
+                guard let httpResponse = responseToUse as? HTTPURLResponse else {
+                    self.errorMessage = "Invalid response from server."
                     completion()
                     return
                 }
+                
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    let body = dataToUse.flatMap { String(data: $0, encoding: .utf8) } ?? "(no response body)"
+                    self.errorMessage = "API Error (\(httpResponse.statusCode)): \(body.prefix(100))"
+                    print("[Canvas API] Assignment fetch error: \(body)")
+                    completion()
+                    return
+                }
+                
+                guard let data = dataToUse, !data.isEmpty else {
+                    self.errorMessage = "No assignment data returned for course \(courseID)"
+                    completion()
+                    return
+                }
+                
                 do {
-                    let fetchedAssignments = try JSONDecoder().decode([CanvasAssignment].self, from: data)
-                    self.assignmentsByCourseId[courseID] = fetchedAssignments
+                    // First try standard decoding
+                    if let assignments = try? JSONDecoder().decode([CanvasAssignment].self, from: data) {
+                        self.assignmentsByCourseId[courseID] = assignments
+                        completion()
+                        return
+                    }
+                    
+                    // If that fails, try manual parsing of the JSON
+                    let json = try JSONSerialization.jsonObject(with: data)
+                    
+                    if let assignmentsArray = json as? [[String: Any]] {
+                        var parsedAssignments: [CanvasAssignment] = []
+                        
+                        for assignmentDict in assignmentsArray {
+                            if let id = assignmentDict["id"] as? Int,
+                               let name = assignmentDict["name"] as? String {
+                                // Create a minimal valid assignment
+                                let assignment = CanvasAssignment(
+                                    id: id,
+                                    name: name,
+                                    due_at: assignmentDict["due_at"] as? String,
+                                    submission_types: assignmentDict["submission_types"] as? [String],
+                                    has_submitted_submissions: assignmentDict["has_submitted_submissions"] as? Bool,
+                                    html_url: assignmentDict["html_url"] as? String
+                                )
+                                parsedAssignments.append(assignment)
+                            }
+                        }
+                        
+                        if !parsedAssignments.isEmpty {
+                            self.assignmentsByCourseId[courseID] = parsedAssignments
+                            completion()
+                            return
+                        }
+                    }
+                    
+                    // If we get here, we couldn't parse the assignments
+                    self.errorMessage = "Could not parse assignments data for course \(courseID)"
                     completion()
                 } catch {
-                    let raw = String(data: data, encoding: .utf8) ?? "<invalid>"
-                    print("[Canvas API] Raw assignments JSON for course \(courseID): \(raw)")
-                    self.errorMessage = "Failed to decode assignments for course \(courseID): \(error.localizedDescription)"
+                    print("[Canvas API] Assignment JSON parsing error: \(error)")
+                    self.errorMessage = "Failed to decode assignments: \(error.localizedDescription)"
                     completion()
                 }
             }
@@ -539,6 +683,14 @@ struct CanvasCourse: Codable, Identifiable {
         enrollments = try? container.decode([Enrollment]?.self, forKey: .enrollments)
         start_at = try? container.decode(String?.self, forKey: .start_at)
         end_at = try? container.decode(String?.self, forKey: .end_at)
+    }
+    
+    init(id: Int, name: String, enrollments: [Enrollment]?, start_at: String?, end_at: String?) {
+        self.id = id
+        self.name = name
+        self.enrollments = enrollments
+        self.start_at = start_at
+        self.end_at = end_at
     }
     
     var isCurrent: Bool {
