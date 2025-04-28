@@ -36,8 +36,6 @@ struct ContentView: View {
     @State private var showingNotesEditor = false
     // State to control priority picker from context menu
     @State private var showingPriorityPicker = false
-    // State to control priority picker for Add Task
-    @State private var showingAddTaskPriorityPicker = false
     // State to track selected tab
     @State private var selectedTab: Int = 0
 
@@ -101,7 +99,7 @@ struct ContentView: View {
             // --- Overlays ---
             
             // Dimmed Background Overlay (covers everything when overlays are active)
-            if showingContextMenu || showingContextMenuDatePicker || showingNotesEditor || showingPriorityPicker || showingAddTaskPriorityPicker || isAddTaskExpanded {
+            if showingContextMenu || showingContextMenuDatePicker || showingNotesEditor || showingPriorityPicker || isAddTaskExpanded {
                 Color.black.opacity(0.4)
                     .ignoresSafeArea()
                     .onTapGesture { // Dismiss on tap outside
@@ -158,18 +156,6 @@ struct ContentView: View {
                 .transition(.scale.combined(with: .opacity))
                 .zIndex(2) // Ensure overlay is above dimming
             }
-
-            // Priority Picker Overlay for Add Task (Conditional)
-            if showingAddTaskPriorityPicker {
-                PriorityPickerView(
-                    taskPriority: $newTaskPriority,
-                    showingPriorityPicker: $showingAddTaskPriorityPicker,
-                    showingContextMenu: .constant(false) // Not linked to context menu
-                )
-                .transition(.scale.combined(with: .opacity))
-                .zIndex(2) // Ensure overlay is above dimming
-                 // Tap gesture handled by the main dimmed background now
-            }
             
             // Add Task Form Overlay (when FAB is tapped)
             if isAddTaskExpanded {
@@ -187,7 +173,6 @@ struct ContentView: View {
         .animation(.easeInOut, value: showingContextMenu)
         .animation(.easeInOut, value: showingNotesEditor)
         .animation(.easeInOut, value: showingPriorityPicker)
-        .animation(.easeInOut, value: showingAddTaskPriorityPicker)
         .animation(.spring(), value: isAddTaskExpanded)
          .onAppear(perform: setupView) // Keep setup/cleanup if needed at this level
          .onDisappear(perform: cleanupView)
@@ -260,7 +245,7 @@ struct ContentView: View {
                     // Removed CanvasView
                     
                     // Canvas LMS Integration
-                    CanvasIntegrationView(taskLists: $taskLists)
+                    CanvasIntegrationView()
                         .padding(.horizontal)
                 }
                 .padding(.top, 20) // Add some top padding
@@ -315,7 +300,7 @@ struct ContentView: View {
                  dateButton // Extracted below
              }
 
-             priorityButton // Extracted below
+             priorityPicker // REPLACED priorityButton with priorityPicker
              notesEditor // Extracted below
              addTaskButton // Extracted below
          }
@@ -372,9 +357,22 @@ struct ContentView: View {
         .foregroundColor(.primary)
     }
 
-    /// Button to select the priority.
-    private var priorityButton: some View {
-        Button { showingAddTaskPriorityPicker = true } label: {
+    /// Picker to select the priority using a menu style.
+    private var priorityPicker: some View {
+        Picker(selection: $newTaskPriority) {
+            // Option for no priority
+            Text("Clear Priority").tag(nil as Priority?)
+            
+            // Options for each priority case
+            ForEach(Priority.allCases) { priority in
+                HStack {
+                    Circle()
+                        .fill(color(for: priority))
+                        .frame(width: 10, height: 10)
+                    Text("\(priority.rawValue) Priority")
+                }.tag(priority as Priority?)
+            }
+        } label: {
             HStack {
                 if let priority = newTaskPriority {
                     Circle()
@@ -389,11 +387,13 @@ struct ContentView: View {
                     .font(.caption)
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(10)
+        .pickerStyle(.menu)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 15)
         .background(Color(.secondarySystemBackground)) // Use secondary for slight contrast
-        .cornerRadius(10)
-        .foregroundColor(.primary)
+        .cornerRadius(8)
+        .accentColor(.primary)
+        .frame(maxWidth: .infinity) // Ensure it takes full width like other controls
     }
 
     /// TextEditor for adding optional notes.
@@ -594,9 +594,14 @@ struct ContentView: View {
             return
         }
 
+        // Clear the context menu state *before* modifying the list
+        let taskName = taskToDelete.name // Keep name for log message
+        contextMenuTask = nil 
+        contextMenuTaskListID = nil
+
         if let listIndex = taskLists.firstIndex(where: { $0.id == listID }) {
             taskLists[listIndex].tasks.removeAll { $0.id == taskToDelete.id }
-            print("Deleted task '\(taskToDelete.name)' from list '\(taskLists[listIndex].name)'")
+            print("Deleted task '\(taskName)' from list '\(taskLists[listIndex].name)'")
         } else {
             print("Error: List not found during deletion.")
         }
@@ -639,7 +644,6 @@ struct ContentView: View {
             showingContextMenuDatePicker = false
             showingNotesEditor = false
             showingPriorityPicker = false
-            showingAddTaskPriorityPicker = false
             isAddTaskExpanded = false
         }
         // Reset context task *after* animation if needed, or immediately
