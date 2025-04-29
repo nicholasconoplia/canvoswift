@@ -7,6 +7,7 @@
 
 import Foundation
 import Alamofire
+import SwiftUI
 
 // MARK: - Models
 
@@ -116,6 +117,13 @@ struct CanvasKitAssignment: Codable, Identifiable {
         }
         return "Assignment"
     }
+    
+    var submissionStatus: (String, Color) {
+        if let submitted = has_submitted_submissions {
+            return submitted ? ("Submitted", Color.green) : ("NOT SUBMITTED", Color(hex: "b892ff"))
+        }
+        return ("Unknown", Color.gray)
+    }
 }
 
 // MARK: - CanvasKit Client
@@ -143,7 +151,9 @@ class CanvasKit {
     /// Fetch courses from Canvas
     func fetchCourses(completion: @escaping (Result<[CanvasKitCourse], Error>) -> Void) {
         // Try both common endpoints with a fallback mechanism
-        fetchFromEndpoint("/api/v1/courses") { result in
+        fetchFromEndpoint("/api/v1/courses") { [weak self] result in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let courses):
                 completion(.success(courses))
@@ -160,7 +170,7 @@ class CanvasKit {
         
         AF.request(urlString, headers: headers)
             .validate()
-            .responseDecodable(of: [CanvasKitCourse].self) { response in
+            .responseDecodable(of: [CanvasKitCourse].self) { [weak self] response in
                 switch response.result {
                 case .success(let courses):
                     completion(.success(courses))
@@ -191,7 +201,7 @@ class CanvasKit {
         
         AF.request(urlString, headers: headers)
             .validate()
-            .responseDecodable(of: [CanvasKitAssignment].self) { response in
+            .responseDecodable(of: [CanvasKitAssignment].self) { [weak self] response in
                 switch response.result {
                 case .success(let assignments):
                     completion(.success(assignments))
@@ -222,7 +232,7 @@ class CanvasKit {
         
         AF.request(urlString, headers: headers)
             .validate()
-            .response { response in
+            .response { [weak self] response in
                 switch response.result {
                 case .success:
                     completion(true, nil)
@@ -240,14 +250,41 @@ class CanvasKit {
                         case 403:
                             message = "Forbidden. Your API key may not have sufficient permissions."
                         case 404:
-                            message = "API endpoint not found. Please check your Canvas URL."
+                            message = "Not found. Check that your university's Canvas URL is correct."
                         default:
-                            message = "API Error (HTTP \(statusCode))"
+                            message = "Error \(statusCode): \(error.localizedDescription)"
                         }
                     }
                     
                     completion(false, message)
                 }
             }
+    }
+}
+
+// Helper extension for Color from hex
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (1, 1, 1, 0)
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
     }
 } 

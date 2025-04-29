@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import Security
 
+@MainActor
 class CanvasIntegrationViewModel: ObservableObject {
     // MARK: - Published Properties
     
@@ -222,16 +223,19 @@ class CanvasIntegrationViewModel: ObservableObject {
         // Initialize CanvasKit with the current URL and API key
         canvasKit = CanvasKit(baseURL: effectiveCanvasURL, apiKey: apiKey)
         
-        // First verify the connection
-        canvasKit?.verifyConnection { [weak self] success, errorMessage in
-            guard let self = self else { return }
-            
-            if success {
-                // If connection is successful, fetch courses
-                self.fetchCourses()
-            } else {
-                self.isLoading = false
-                self.errorMessage = errorMessage ?? "Could not connect to Canvas. Please verify your API key and Canvas URL."
+        // First verify the connection using traditional callbacks
+        canvasKit?.verifyConnection { [weak self] success, errorMsg in
+            // Jump back to main thread
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                if success {
+                    // If connection is successful, fetch courses
+                    self.fetchCourses()
+                } else {
+                    self.isLoading = false
+                    self.errorMessage = errorMsg ?? "Could not connect to Canvas. Please verify your API key and Canvas URL."
+                }
             }
         }
     }
@@ -239,101 +243,104 @@ class CanvasIntegrationViewModel: ObservableObject {
     // Fetch courses using CanvasKit
     private func fetchCourses() {
         canvasKit?.fetchCourses { [weak self] result in
-            guard let self = self else { return }
-            
-            switch result {
-            case .success(let fetchedCourses):
-                // Process fetched courses
-                self.processFetchedCourses(fetchedCourses)
-            case .failure(let error):
-                DispatchQueue.main.async {
+            // Jump back to main thread
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let fetchedCourses):
+                    // Process fetched courses in a thread-safe manner
+                    self.processFetchedCourses(fetchedCourses)
+                case .failure(let error):
                     self.isLoading = false
-                    self.errorMessage = "Failed to fetch courses: \(error.localizedDescription)"
+                    self.errorMessage = "Error fetching courses: \(error.localizedDescription)"
                 }
             }
         }
     }
     
-    // Process the fetched courses (apply filters and fetch assignments)
+    // Process fetched courses
     private func processFetchedCourses(_ fetchedCourses: [CanvasKitCourse]) {
-        DispatchQueue.main.async {
-            // First filter to get all student courses that are active
-            let studentCourses = fetchedCourses.filter { course in
-                guard let enrollments = course.enrollments else { return false }
-                return enrollments.contains(where: { $0.type == "student" })
-            }
-            
-            // Then apply date filter if enabled
-            let filteredCourses = self.showOnlyCurrentCourses 
-                ? studentCourses.filter { $0.isCurrent } 
-                : studentCourses
-            
-            self.courses = filteredCourses
-            
-            if !filteredCourses.isEmpty {
-                self.isApiKeyConnected = true
-                self.saveAPIKeyToKeychain()
-                
-                // Fetch assignments for each course
-                self.fetchAssignmentsForAllCourses()
-            } else {
-                self.isLoading = false
-                self.saveCanvasData()
-            }
-        }
+        // Create local copies to avoid data races
+        let shouldFilterToCurrent = self.showOnlyCurrentCourses
+        
+        // Filter courses if needed
+        let filteredCourses = shouldFilterToCurrent ? 
+            fetchedCourses.filter { $0.isCurrent } : 
+            fetchedCourses
+        
+        let sortedCourses = filteredCourses.sorted { $0.name < $1.name }
+        
+        // Update on main thread (we're already on main thread from fetchCourses)
+        self.courses = sortedCourses
+        
+        // Now fetch assignments for each course
+        self.fetchAssignmentsForAllCourses()
     }
     
     // Fetch assignments for all courses
-    func fetchAssignmentsForAllCourses() {
+    private func fetchAssignmentsForAllCourses() {
         guard !courses.isEmpty else {
-            isLoading = false
+            self.isLoading = false
+            self.isApiKeyConnected = true
+            self.saveAPIKeyToKeychain()
+            self.saveCanvasData()
             return
         }
         
-        // Reset loading state when starting a new full fetch
-        isLoading = true
+        // Initialize assignments dictionary
+        assignmentsByCourseId = [:]
         
-        // Create a group to track all assignment fetch operations
-        let group = DispatchGroup()
+        // Create a dispatch group to wait for all fetches
+        let dispatchGroup = DispatchGroup()
         
-        for course in courses {
-            group.enter()
-            fetchingAssignments.insert(course.id)
-            fetchAssignmentsForCourse(course.id) {
-                self.fetchingAssignments.remove(course.id)
-                group.leave()
+        // Keep track of course IDs to safely access them in the closure
+        let courseIds = courses.map { $0.id }
+        
+        // Fetch assignments for each course
+        for courseId in courseIds {
+            dispatchGroup.enter()
+            
+            // Mark this course as being fetched
+            self.fetchingAssignments.insert(courseId)
+            
+            // Use traditional callback approach
+            canvasKit?.fetchAssignments(forCourseId: courseId) { [weak self] result in
+                // Ensure we jump to main thread for SwiftUI updates
+                DispatchQueue.main.async {
+                    guard let self = self else { 
+                        dispatchGroup.leave()
+                        return 
+                    }
+                    
+                    switch result {
+                    case .success(let assignments):
+                        self.assignmentsByCourseId[courseId] = assignments
+                    case .failure:
+                        self.assignmentsByCourseId[courseId] = [] // Empty array on error
+                    }
+                    
+                    // Remove this course from fetching list and leave dispatch group
+                    self.fetchingAssignments.remove(courseId)
+                    dispatchGroup.leave()
+                }
             }
         }
         
-        // When all assignments are fetched, update loading state
-        group.notify(queue: .main) { [weak self] in
+        // When all fetches are complete
+        dispatchGroup.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
+            
             self.isLoading = false
+            
+            // Save connection state and data
+            self.isApiKeyConnected = true
+            self.saveAPIKeyToKeychain()
             self.saveCanvasData()
         }
     }
     
-    // Fetch assignments for a specific course
-    func fetchAssignmentsForCourse(_ courseID: Int, completion: @escaping () -> Void = {}) {
-        canvasKit?.fetchAssignments(forCourseId: courseID) { [weak self] result in
-            guard let self = self else { 
-                completion()
-                return 
-            }
-            
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let assignments):
-                    self.assignmentsByCourseId[courseID] = assignments
-                case .failure(let error):
-                    print("Failed to fetch assignments for course \(courseID): \(error.localizedDescription)")
-                }
-                completion()
-            }
-        }
-    }
-    
-    // Computed property to get filtered assignments based on type selection
+    // Computed property for filtered assignments based on type selection
     func filteredAssignments(for courseId: Int) -> [CanvasKitAssignment] {
         let assignments = assignmentsByCourseId[courseId] ?? []
         

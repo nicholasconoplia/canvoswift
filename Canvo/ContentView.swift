@@ -178,6 +178,43 @@ struct ContentView: View {
          .onDisappear(perform: cleanupView)
     }
 
+    // MARK: - Setup and Cleanup
+
+    /// Setup any initial view state or observers
+    private func setupView() {
+        // Add notification observer for task list updates
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("TaskListsUpdated"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            // Structs don't need weak self - they're value types
+            DispatchQueue.main.async {
+                self.reloadTaskLists()
+            }
+        }
+        // Ensure TextEditor background is clear for overlay placeholder
+        UITextView.appearance().backgroundColor = .clear
+        updateSelectedList() // Ensure initial list selection for Add Task
+    }
+    
+    /// Clean up observers when view disappears
+    private func cleanupView() {
+        // Remove notification observer
+        NotificationCenter.default.removeObserver(
+            self,
+            name: Notification.Name("TaskListsUpdated"),
+            object: nil
+        )
+        // Reset TextEditor background appearance
+        UITextView.appearance().backgroundColor = nil
+    }
+    
+    /// Reload task lists from UserDefaults
+    private func reloadTaskLists() {
+        taskLists = DataManager.load()
+    }
+
     // MARK: - Common UI Elements (Header, Tabs)
 
     /// Custom navigation title view with subtitle
@@ -510,19 +547,6 @@ struct ContentView: View {
 
     // MARK: - Helper Methods (Moved/Adapted from TasksView)
 
-    /// Logic to run when the view appears.
-    private func setupView() {
-        // Ensure TextEditor background is clear for overlay placeholder
-        UITextView.appearance().backgroundColor = .clear
-        updateSelectedList() // Ensure initial list selection for Add Task
-    }
-
-    /// Logic to run when the view disappears.
-    private func cleanupView() {
-        // Reset TextEditor background appearance
-        UITextView.appearance().backgroundColor = nil
-    }
-    
     /// Updates the selected list ID, typically when lists change or on appear.
     private func updateSelectedList() {
         if selectedListId == nil || !taskLists.contains(where: { $0.id == selectedListId }) {
