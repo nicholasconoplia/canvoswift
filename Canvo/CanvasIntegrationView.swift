@@ -6,6 +6,7 @@
 
 import SwiftUI
 import Security
+import Alamofire
 
 // MARK: - University Model
 struct University: Identifiable, Hashable {
@@ -44,8 +45,8 @@ class CanvasIntegrationViewModel: ObservableObject {
     @Published var apiKey: String = ""
     @Published var isLoading: Bool = false
     @Published var errorMessage: String? = nil
-    @Published var courses: [CanvasCourse] = []
-    @Published var assignmentsByCourseId: [Int: [CanvasAssignment]] = [:]
+    @Published var courses: [CanvasKitCourse] = []
+    @Published var assignmentsByCourseId: [Int: [CanvasKitAssignment]] = [:]
     @Published var isApiKeyConnected: Bool = false
     @Published var fetchingAssignments: Set<Int> = [] // Track which courses are being fetched
     
@@ -67,7 +68,7 @@ class CanvasIntegrationViewModel: ObservableObject {
     let assignmentTypes = ["Assignment", "Quiz", "Discussion"]
     
     // Computed property to get filtered courses based on selection
-    var filteredCourses: [CanvasCourse] {
+    var filteredCourses: [CanvasKitCourse] {
         if let courseId = selectedCourseId {
             return courses.filter { $0.id == courseId }
         }
@@ -121,12 +122,12 @@ class CanvasIntegrationViewModel: ObservableObject {
             
             // Load courses and assignments from UserDefaults
             if let coursesData = UserDefaults.standard.data(forKey: "savedCourses"),
-               let savedCourses = try? JSONDecoder().decode([CanvasCourse].self, from: coursesData) {
+               let savedCourses = try? JSONDecoder().decode([CanvasKitCourse].self, from: coursesData) {
                 self.courses = savedCourses
             }
             
             if let assignmentsData = UserDefaults.standard.data(forKey: "savedAssignmentsByCourseId"),
-               let savedAssignments = try? JSONDecoder().decode([Int: [CanvasAssignment]].self, from: assignmentsData) {
+               let savedAssignments = try? JSONDecoder().decode([Int: [CanvasKitAssignment]].self, from: assignmentsData) {
                 self.assignmentsByCourseId = savedAssignments
             }
         }
@@ -481,7 +482,7 @@ class CanvasIntegrationViewModel: ObservableObject {
                        let coursesArray = coursesDict["courses"] as? [[String: Any]] {
                         do {
                             let jsonData = try JSONSerialization.data(withJSONObject: coursesArray)
-                            let decodedCourses = try JSONDecoder().decode([CanvasCourse].self, from: jsonData)
+                            let decodedCourses = try JSONDecoder().decode([CanvasKitCourse].self, from: jsonData)
                             self.courses.append(contentsOf: decodedCourses)
                             print("[Canvas API] Successfully loaded \(decodedCourses.count) courses from nested 'courses' data")
                             completion(true)
@@ -496,7 +497,7 @@ class CanvasIntegrationViewModel: ObservableObject {
                     if let coursesArray = json as? [[String: Any]] {
                         do {
                             let jsonData = try JSONSerialization.data(withJSONObject: coursesArray)
-                            let decodedCourses = try JSONDecoder().decode([CanvasCourse].self, from: jsonData)
+                            let decodedCourses = try JSONDecoder().decode([CanvasKitCourse].self, from: jsonData)
                             self.courses.append(contentsOf: decodedCourses)
                             
                             // Check for pagination
@@ -520,7 +521,7 @@ class CanvasIntegrationViewModel: ObservableObject {
                                     print("[Canvas API] USyd course keys: \(firstCourse.keys)")
                                     
                                     // Try to extract with manual mapping
-                                    var extractedCourses: [CanvasCourse] = []
+                                    var extractedCourses: [CanvasKitCourse] = []
                                     
                                     for courseDict in coursesArray {
                                         // USyd might use different key naming
@@ -528,7 +529,7 @@ class CanvasIntegrationViewModel: ObservableObject {
                                            let name = courseDict["name"] as? String ?? courseDict["courseName"] as? String ?? courseDict["course_name"] as? String ?? courseDict["title"] as? String {
                                             
                                             // Create course manually
-                                            let course = CanvasCourse(
+                                            let course = CanvasKitCourse(
                                                 id: id, 
                                                 name: name,
                                                 enrollments: nil, 
@@ -562,14 +563,14 @@ class CanvasIntegrationViewModel: ObservableObject {
                             let coursesArray = possibleCourseArrays[0] // Use the first candidate
                             do {
                                 // Create more flexible course objects
-                                var simplifiedCourses: [CanvasCourse] = []
+                                var simplifiedCourses: [CanvasKitCourse] = []
                                 
                                 for courseDict in coursesArray {
                                     // Use nil-coalescing to try multiple potential keys
                                     if let id = courseDict["id"] as? Int ?? courseDict["courseId"] as? Int ?? courseDict["course_id"] as? Int,
                                        let name = courseDict["name"] as? String ?? courseDict["courseName"] as? String ?? courseDict["course_name"] as? String ?? courseDict["title"] as? String {
                                         // Create a minimal course object with just required fields
-                                        let course = CanvasCourse(
+                                        let course = CanvasKitCourse(
                                             id: id,
                                             name: name,
                                             enrollments: nil,
@@ -666,13 +667,13 @@ class CanvasIntegrationViewModel: ObservableObject {
                     // First try direct array decode
                     if let coursesArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
                         // Process the array of courses
-                        var extractedCourses: [CanvasCourse] = []
+                        var extractedCourses: [CanvasKitCourse] = []
                         
                         for courseDict in coursesArray {
                             if let id = courseDict["id"] as? Int,
                                let name = courseDict["name"] as? String {
                                 
-                                let course = CanvasCourse(
+                                let course = CanvasKitCourse(
                                     id: id,
                                     name: name,
                                     enrollments: nil,
@@ -699,13 +700,13 @@ class CanvasIntegrationViewModel: ObservableObject {
                         // Check common wrapper keys
                         for key in ["courses", "data", "items"] {
                             if let coursesArray = responseDict[key] as? [[String: Any]] {
-                                var extractedCourses: [CanvasCourse] = []
+                                var extractedCourses: [CanvasKitCourse] = []
                                 
                                 for courseDict in coursesArray {
                                     if let id = courseDict["id"] as? Int,
                                        let name = courseDict["name"] as? String {
                                         
-                                        let course = CanvasCourse(
+                                        let course = CanvasKitCourse(
                                             id: id,
                                             name: name,
                                             enrollments: nil,
@@ -735,13 +736,13 @@ class CanvasIntegrationViewModel: ObservableObject {
                         let courseArrays = self.findCoursesArrayInJson(jsonDict)
                         
                         if !courseArrays.isEmpty {
-                            var extractedCourses: [CanvasCourse] = []
+                            var extractedCourses: [CanvasKitCourse] = []
                             
                             for courseDict in courseArrays[0] {
                                 if let id = courseDict["id"] as? Int,
                                    let name = courseDict["name"] as? String {
                                     
-                                    let course = CanvasCourse(
+                                    let course = CanvasKitCourse(
                                         id: id,
                                         name: name,
                                         enrollments: nil,
@@ -997,14 +998,14 @@ class CanvasIntegrationViewModel: ObservableObject {
     }
     
     // Add a helper method to parse assignments array
-    private func parseAssignmentsArray(_ assignmentsArray: [[String: Any]], forCourse courseID: Int) -> [CanvasAssignment] {
-        var parsedAssignments: [CanvasAssignment] = []
+    private func parseAssignmentsArray(_ assignmentsArray: [[String: Any]], forCourse courseID: Int) -> [CanvasKitAssignment] {
+        var parsedAssignments: [CanvasKitAssignment] = []
         
         for assignmentDict in assignmentsArray {
             if let id = assignmentDict["id"] as? Int ?? assignmentDict["assignment_id"] as? Int,
                let name = assignmentDict["name"] as? String ?? assignmentDict["title"] as? String {
                 // Create a minimal valid assignment
-                let assignment = CanvasAssignment(
+                let assignment = CanvasKitAssignment(
                     id: id,
                     name: name,
                     due_at: assignmentDict["due_at"] as? String ?? assignmentDict["due_date"] as? String,
@@ -1020,7 +1021,7 @@ class CanvasIntegrationViewModel: ObservableObject {
     }
     
     // Computed property to get filtered assignments based on type selection
-    func filteredAssignments(for courseId: Int) -> [CanvasAssignment] {
+    func filteredAssignments(for courseId: Int) -> [CanvasKitAssignment] {
         let assignments = assignmentsByCourseId[courseId] ?? []
         
         if let type = selectedAssignmentType {
@@ -1044,7 +1045,7 @@ struct USydCoursesResponse: Codable {
     }
 }
 
-struct CanvasCourse: Codable, Identifiable {
+struct CanvasKitCourse: Codable, Identifiable {
     struct Enrollment: Codable {
         let type: String?
         let enrollment_state: String?
@@ -1209,7 +1210,7 @@ struct CanvasCourse: Codable, Identifiable {
     }
 }
 
-struct CanvasAssignment: Codable, Identifiable {
+struct CanvasKitAssignment: Codable, Identifiable {
     let id: Int
     let name: String
     let due_at: String?
@@ -1841,8 +1842,8 @@ struct CanvasIntegrationView: View {
 
 // MARK: - Course Card View
 struct CourseCardView: View {
-    let course: CanvasCourse
-    let assignments: [CanvasAssignment]
+    let course: CanvasKitCourse
+    let assignments: [CanvasKitAssignment]
     let isLoading: Bool
     @ObservedObject var viewModel: CanvasIntegrationViewModel
     
@@ -1891,7 +1892,7 @@ struct CourseCardView: View {
 
 // MARK: - Assignment Card View
 struct AssignmentCardView: View {
-    let assignment: CanvasAssignment
+    let assignment: CanvasKitAssignment
     
     private let themeColor = Color(hex: "b892ff") // Purple color
     private let lightThemeColor = Color(hex: "e0cfff") // Lighter purple

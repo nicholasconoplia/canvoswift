@@ -1,0 +1,6 @@
+framework module Pods_Canvo {
+  umbrella header "Pods-Canvo-umbrella.h"
+
+  export *
+  module * { export * }
+}
