@@ -295,10 +295,24 @@ class CanvasIntegrationViewModel: ObservableObject {
         // Create local copies to avoid data races
         let shouldFilterToCurrent = self.showOnlyCurrentCourses
         
+        print("DEBUG: Processing \(fetchedCourses.count) courses, showOnlyCurrentCourses = \(shouldFilterToCurrent)")
+        
+        // Debug details about the courses
+        for (index, course) in fetchedCourses.enumerated() {
+            print("DEBUG: Course \(index): \(course.displayName), isCurrent = \(course.isCurrent), start_at = \(course.start_at ?? "nil"), end_at = \(course.end_at ?? "nil")")
+            if let enrollments = course.enrollments {
+                print("DEBUG:   Enrollments: \(enrollments.count), active = \(enrollments.contains { $0.enrollment_state == "active" })")
+            } else {
+                print("DEBUG:   Enrollments: nil")
+            }
+        }
+        
         // Filter courses if needed
         let filteredCourses = shouldFilterToCurrent ? 
             fetchedCourses.filter { $0.isCurrent } : 
             fetchedCourses
+        
+        print("DEBUG: After filtering, \(filteredCourses.count) courses remain")
         
         let sortedCourses = filteredCourses.sorted { $0.displayName < $1.displayName }
         
@@ -312,12 +326,15 @@ class CanvasIntegrationViewModel: ObservableObject {
     // Fetch assignments for all courses
     private func fetchAssignmentsForAllCourses() {
         guard !courses.isEmpty else {
+            print("DEBUG: No courses available to fetch assignments for")
             self.isLoading = false
             self.isApiKeyConnected = true
             self.saveAPIKeyToKeychain()
             self.saveCanvasData()
             return
         }
+        
+        print("DEBUG: Starting to fetch assignments for \(courses.count) courses")
         
         // Initialize assignments dictionary
         assignmentsByCourseId = [:]
@@ -330,6 +347,7 @@ class CanvasIntegrationViewModel: ObservableObject {
         
         // Fetch assignments for each course
         for courseId in courseIds {
+            print("DEBUG: Fetching assignments for course ID: \(courseId)")
             dispatchGroup.enter()
             
             // Mark this course as being fetched
@@ -346,8 +364,10 @@ class CanvasIntegrationViewModel: ObservableObject {
                     
                     switch result {
                     case .success(let assignments):
+                        print("DEBUG: Successfully fetched \(assignments.count) assignments for course ID: \(courseId)")
                         self.assignmentsByCourseId[courseId] = assignments
-                    case .failure:
+                    case .failure(let error):
+                        print("DEBUG: Failed to fetch assignments for course ID: \(courseId), error: \(error.localizedDescription)")
                         self.assignmentsByCourseId[courseId] = [] // Empty array on error
                     }
                     
@@ -361,6 +381,8 @@ class CanvasIntegrationViewModel: ObservableObject {
         // When all fetches are complete
         dispatchGroup.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
+            
+            print("DEBUG: All assignment fetches complete. Got assignments for \(self.assignmentsByCourseId.count) courses")
             
             self.isLoading = false
             

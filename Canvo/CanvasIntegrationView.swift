@@ -196,6 +196,16 @@ struct CanvasIntegrationView: View {
                 .cornerRadius(12)
                 .padding(.bottom, 8)
                 
+                // Add filter for showing only current courses
+                Toggle("Show only current courses", isOn: $viewModel.showOnlyCurrentCourses)
+                    .font(.subheadline)
+                    .padding(.horizontal)
+                    .padding(.bottom, 12)
+                    .onChange(of: viewModel.showOnlyCurrentCourses) { _ in
+                        // Refresh data when toggle changes
+                        viewModel.fetchCanvasData()
+                    }
+                
                 // Top filter pills
                 HStack(spacing: 16) {
                     // Course filter

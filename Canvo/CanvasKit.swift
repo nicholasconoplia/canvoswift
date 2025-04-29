@@ -31,31 +31,52 @@ struct CanvasKitCourse: Codable, Identifiable {
     var isCurrent: Bool {
         guard let start = start_at, let end = end_at else { 
             // If dates are not available, check for active enrollments
-            guard let enrolls = enrollments else { return false }
+            guard let enrolls = enrollments else { return true }
             return enrolls.contains(where: { $0.enrollment_state == "active" })
         }
         
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        // Try multiple date formats since different Canvas instances may use different formats
         
-        // Try with fractional seconds first, then fall back to without if parsing fails
-        if let startDate = formatter.date(from: start),
-           let endDate = formatter.date(from: end) {
-            let currentDate = Date()
+        // First try ISO8601 with fractional seconds
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        
+        // Then try without fractional seconds
+        let isoBasicFormatter = ISO8601DateFormatter()
+        isoBasicFormatter.formatOptions = [.withInternetDateTime]
+        
+        // Also try standard RFC3339 date format (common in APIs)
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        
+        // Try a more lenient format too
+        let lenientFormatter = DateFormatter()
+        lenientFormatter.dateFormat = "yyyy-MM-dd"
+        
+        // Get current date for comparison
+        let currentDate = Date()
+        
+        // Try parsing with various formatters
+        if let startDate = isoFormatter.date(from: start) ?? 
+                          isoBasicFormatter.date(from: start) ?? 
+                          dateFormatter.date(from: start) ?? 
+                          lenientFormatter.date(from: start),
+           let endDate = isoFormatter.date(from: end) ?? 
+                        isoBasicFormatter.date(from: end) ?? 
+                        dateFormatter.date(from: end) ?? 
+                        lenientFormatter.date(from: end) {
+            
+            // Print debug info about the dates
+            print("DEBUG: Successfully parsed dates for course - Start: \(startDate), End: \(endDate), Current: \(currentDate)")
+            
+            // A course is current if today's date is between start and end dates
             return currentDate >= startDate && currentDate <= endDate
-        } else {
-            // Try again without fractional seconds
-            formatter.formatOptions = [.withInternetDateTime]
-            if let startDate = formatter.date(from: start),
-               let endDate = formatter.date(from: end) {
-                let currentDate = Date()
-                return currentDate >= startDate && currentDate <= endDate
-            }
         }
         
-        // If date parsing fails, fall back to enrollment status
-        guard let enrolls = enrollments else { return false }
-        return enrolls.contains(where: { $0.enrollment_state == "active" })
+        print("DEBUG: Failed to parse dates: \(start) to \(end)")
+        
+        // If date parsing fails, assume it's current
+        return true
     }
 }
 
