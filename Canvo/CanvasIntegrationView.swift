@@ -17,7 +17,7 @@ struct University: Identifiable, Hashable {
 // MARK: - Predefined Universities
 let UNIVERSITIES: [University] = [
     University(name: "University of Technology Sydney (UTS)", url: "https://canvas.uts.edu.au"),
-    University(name: "University of Sydney (USyd)", url: "https://canvas.sydney.edu.au"),
+    University(name: "University of Sydney (USyd)", url: "https://canvas.sydney.edu.au/api"),
     University(name: "Macquarie University", url: "https://ilearn.mq.edu.au"),
     University(name: "Western Sydney University", url: "https://vuws.westernsydney.edu.au"),
     University(name: "Australian Catholic University", url: "https://canvas.acu.edu.au"),
@@ -329,6 +329,26 @@ class CanvasIntegrationViewModel: ObservableObject {
     
     // Wrapper function to try both endpoints
     private func fetchWithEndpoint(_ endpoint: String, completion: @escaping (Bool) -> Void) {
+        // Special handling for USyd
+        if selectedUniversityName.contains("USyd") || selectedUniversityName.contains("Sydney") {
+            // USyd has a different API structure - try their specific endpoints
+            fetchUSydCourses { success in
+                if success {
+                    completion(true)
+                } else {
+                    // Fall back to standard Canvas endpoints
+                    self.tryStandardCanvasEndpoints(endpoint: endpoint, completion: completion)
+                }
+            }
+            return
+        }
+        
+        // For non-USyd universities, use standard Canvas endpoints
+        tryStandardCanvasEndpoints(endpoint: endpoint, completion: completion)
+    }
+    
+    // Try standard Canvas LMS endpoints
+    private func tryStandardCanvasEndpoints(endpoint: String, completion: @escaping (Bool) -> Void) {
         fetchAllCourses(endpoint: endpoint) { success in
             if success {
                 completion(true)
@@ -429,11 +449,20 @@ class CanvasIntegrationViewModel: ObservableObject {
                     return
                 }
                 
-                guard let data = data, !data.isEmpty else {
+                guard let data = dataToUse, !data.isEmpty else {
                     self.errorMessage = "No data returned from Canvas."
                     print("[Canvas API] Empty data received")
                     completion(false)
                     return
+                }
+                
+                // ENHANCED DEBUGGING: Log the raw JSON for USyd
+                if self.selectedUniversityName.contains("USyd") || self.selectedUniversityName.contains("Sydney") {
+                    if let jsonString = String(data: data, encoding: .utf8) {
+                        print("[Canvas API - USyd] Raw JSON Response: \(jsonString)")
+                        // Write to a file for inspection if needed
+                        self.saveJsonToFile(jsonString: jsonString, filename: "usyd_response.json")
+                    }
                 }
                 
                 // Following the React Native implementation, try to decode the JSON
@@ -447,7 +476,23 @@ class CanvasIntegrationViewModel: ObservableObject {
                         print("[Canvas API] Response preview: \(preview)...")
                     }
                     
-                    // Try to decode as array of courses first
+                    // First check if it's a wrapper object with 'courses' key (common in USyd)
+                    if let coursesDict = json as? [String: Any], 
+                       let coursesArray = coursesDict["courses"] as? [[String: Any]] {
+                        do {
+                            let jsonData = try JSONSerialization.data(withJSONObject: coursesArray)
+                            let decodedCourses = try JSONDecoder().decode([CanvasCourse].self, from: jsonData)
+                            self.courses.append(contentsOf: decodedCourses)
+                            print("[Canvas API] Successfully loaded \(decodedCourses.count) courses from nested 'courses' data")
+                            completion(true)
+                            return
+                        } catch let decodingError {
+                            print("[Canvas API] Failed to decode nested courses array: \(decodingError)")
+                            // Continue to try other formats
+                        }
+                    }
+                    
+                    // Try to decode as array of courses first (standard format)
                     if let coursesArray = json as? [[String: Any]] {
                         do {
                             let jsonData = try JSONSerialization.data(withJSONObject: coursesArray)
@@ -466,30 +511,48 @@ class CanvasIntegrationViewModel: ObservableObject {
                             print("[Canvas API] Successfully loaded \(self.courses.count) courses")
                             completion(true)
                             return
-                        } catch {
-                            print("[Canvas API] Failed to decode courses array: \(error)")
-                            // Continue to try other formats
-                        }
-                    }
-                    
-                    // If the above fails, try as a dictionary with a courses key
-                    if let coursesDict = json as? [String: Any], 
-                       let coursesArray = coursesDict["courses"] as? [[String: Any]] {
-                        do {
-                            let jsonData = try JSONSerialization.data(withJSONObject: coursesArray)
-                            let decodedCourses = try JSONDecoder().decode([CanvasCourse].self, from: jsonData)
-                            self.courses.append(contentsOf: decodedCourses)
-                            print("[Canvas API] Successfully loaded \(decodedCourses.count) courses from nested data")
-                            completion(true)
-                            return
-                        } catch {
-                            print("[Canvas API] Failed to decode nested courses: \(error)")
+                        } catch let decodingError {
+                            print("[Canvas API] Failed to decode courses array: \(decodingError)")
+                            
+                            // Special handling for USyd - try to extract keys
+                            if self.selectedUniversityName.contains("USyd") || self.selectedUniversityName.contains("Sydney") {
+                                if let firstCourse = coursesArray.first {
+                                    print("[Canvas API] USyd course keys: \(firstCourse.keys)")
+                                    
+                                    // Try to extract with manual mapping
+                                    var extractedCourses: [CanvasCourse] = []
+                                    
+                                    for courseDict in coursesArray {
+                                        // USyd might use different key naming
+                                        if let id = courseDict["id"] as? Int ?? courseDict["courseId"] as? Int ?? courseDict["course_id"] as? Int,
+                                           let name = courseDict["name"] as? String ?? courseDict["courseName"] as? String ?? courseDict["course_name"] as? String ?? courseDict["title"] as? String {
+                                            
+                                            // Create course manually
+                                            let course = CanvasCourse(
+                                                id: id, 
+                                                name: name,
+                                                enrollments: nil, 
+                                                start_at: nil, 
+                                                end_at: nil
+                                            )
+                                            extractedCourses.append(course)
+                                        }
+                                    }
+                                    
+                                    if !extractedCourses.isEmpty {
+                                        print("[Canvas API] Manually extracted \(extractedCourses.count) USyd courses")
+                                        self.courses.append(contentsOf: extractedCourses)
+                                        completion(true)
+                                        return
+                                    }
+                                }
+                            }
+                            // Continue to try other formats if this fails
                         }
                     }
                     
                     // If we got here, we couldn't decode in a familiar format
-                    // IMPORTANT: React Native implemented a more flexible parsing approach
-                    // Let's try a more manual approach for USyd's API
+                    // Let's try a more manual approach
                     if let jsonDict = json as? [String: Any] {
                         print("[Canvas API] Available JSON keys: \(jsonDict.keys.joined(separator: ", "))")
                         
@@ -502,15 +565,16 @@ class CanvasIntegrationViewModel: ObservableObject {
                                 var simplifiedCourses: [CanvasCourse] = []
                                 
                                 for courseDict in coursesArray {
-                                    if let id = courseDict["id"] as? Int,
-                                       let name = courseDict["name"] as? String {
+                                    // Use nil-coalescing to try multiple potential keys
+                                    if let id = courseDict["id"] as? Int ?? courseDict["courseId"] as? Int ?? courseDict["course_id"] as? Int,
+                                       let name = courseDict["name"] as? String ?? courseDict["courseName"] as? String ?? courseDict["course_name"] as? String ?? courseDict["title"] as? String {
                                         // Create a minimal course object with just required fields
                                         let course = CanvasCourse(
                                             id: id,
                                             name: name,
                                             enrollments: nil,
-                                            start_at: courseDict["start_at"] as? String,
-                                            end_at: courseDict["end_at"] as? String
+                                            start_at: courseDict["start_at"] as? String ?? courseDict["startDate"] as? String,
+                                            end_at: courseDict["end_at"] as? String ?? courseDict["endDate"] as? String
                                         )
                                         simplifiedCourses.append(course)
                                     }
@@ -522,8 +586,8 @@ class CanvasIntegrationViewModel: ObservableObject {
                                     completion(true)
                                     return
                                 }
-                            } catch {
-                                print("[Canvas API] Failed during manual course extraction: \(error)")
+                            } catch let extractionError {
+                                print("[Canvas API] Failed during manual course extraction: \(extractionError)")
                             }
                         }
                     }
@@ -531,13 +595,195 @@ class CanvasIntegrationViewModel: ObservableObject {
                     // If all attempts failed
                     self.errorMessage = "Unable to parse Canvas data. The format is unexpected."
                     completion(false)
-                } catch {
-                    print("[Canvas API] JSON parsing error: \(error)")
-                    self.errorMessage = "Failed to decode Canvas data: \(error.localizedDescription)"
+                } catch let jsonError {
+                    print("[Canvas API] JSON parsing error: \(jsonError)")
+                    self.errorMessage = "Failed to decode Canvas data: \(jsonError.localizedDescription)"
                     completion(false)
                 }
             }
         }.resume()
+    }
+    
+    // Special method for fetching USyd courses
+    private func fetchUSydCourses(completion: @escaping (Bool) -> Void) {
+        // For USyd, we'll try their specific endpoint pattern first
+        let urlString = "\(effectiveCanvasURL)/v1/users/self/courses"
+        
+        guard let url = URL(string: urlString) else {
+            self.errorMessage = "Invalid USyd Canvas URL: \(urlString)"
+            completion(false)
+            return
+        }
+        
+        print("[Canvas API] Requesting USyd courses from: \(urlString)")
+        
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpMethod = "GET"
+        
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.errorMessage = "USyd API error: \(error.localizedDescription)"
+                    completion(false)
+                    return
+                }
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    self.errorMessage = "Invalid response from USyd Canvas."
+                    completion(false)
+                    return
+                }
+                
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    if httpResponse.statusCode == 401 {
+                        self.errorMessage = "Authentication failed for USyd Canvas. Check your API key."
+                    } else {
+                        self.errorMessage = "USyd Canvas API error (HTTP \(httpResponse.statusCode))"
+                    }
+                    completion(false)
+                    return
+                }
+                
+                guard let data = data, !data.isEmpty else {
+                    self.errorMessage = "No data returned from USyd Canvas."
+                    completion(false)
+                    return
+                }
+                
+                // Log the raw JSON for debugging
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("[Canvas API - USyd] Raw JSON Response: \(jsonString)")
+                    self.saveJsonToFile(jsonString: jsonString, filename: "usyd_response.json")
+                }
+                
+                do {
+                    // Try to decode as different formats
+                    
+                    // First try direct array decode
+                    if let coursesArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                        // Process the array of courses
+                        var extractedCourses: [CanvasCourse] = []
+                        
+                        for courseDict in coursesArray {
+                            if let id = courseDict["id"] as? Int,
+                               let name = courseDict["name"] as? String {
+                                
+                                let course = CanvasCourse(
+                                    id: id,
+                                    name: name,
+                                    enrollments: nil,
+                                    start_at: nil,
+                                    end_at: nil
+                                )
+                                extractedCourses.append(course)
+                            }
+                        }
+                        
+                        if !extractedCourses.isEmpty {
+                            self.courses.append(contentsOf: extractedCourses)
+                            print("[Canvas API] Extracted \(extractedCourses.count) USyd courses directly")
+                            completion(true)
+                            return
+                        }
+                    }
+                    
+                    // Then try the wrapper format
+                    let json = try JSONSerialization.jsonObject(with: data)
+                    
+                    // Check for different nested formats
+                    if let responseDict = json as? [String: Any] {
+                        // Check common wrapper keys
+                        for key in ["courses", "data", "items"] {
+                            if let coursesArray = responseDict[key] as? [[String: Any]] {
+                                var extractedCourses: [CanvasCourse] = []
+                                
+                                for courseDict in coursesArray {
+                                    if let id = courseDict["id"] as? Int,
+                                       let name = courseDict["name"] as? String {
+                                        
+                                        let course = CanvasCourse(
+                                            id: id,
+                                            name: name,
+                                            enrollments: nil,
+                                            start_at: nil,
+                                            end_at: nil
+                                        )
+                                        extractedCourses.append(course)
+                                    }
+                                }
+                                
+                                if !extractedCourses.isEmpty {
+                                    self.courses.append(contentsOf: extractedCourses)
+                                    print("[Canvas API] Extracted \(extractedCourses.count) USyd courses from \(key) key")
+                                    completion(true)
+                                    return
+                                }
+                            }
+                        }
+                        
+                        // Log available keys for debugging
+                        print("[Canvas API] USyd response keys: \(responseDict.keys.joined(separator: ", "))")
+                    }
+                    
+                    // If we got here, we couldn't extract courses through normal means
+                    // Try a more dynamic approach by looking for arrays containing objects with id and name
+                    if let jsonDict = json as? [String: Any] {
+                        let courseArrays = self.findCoursesArrayInJson(jsonDict)
+                        
+                        if !courseArrays.isEmpty {
+                            var extractedCourses: [CanvasCourse] = []
+                            
+                            for courseDict in courseArrays[0] {
+                                if let id = courseDict["id"] as? Int,
+                                   let name = courseDict["name"] as? String {
+                                    
+                                    let course = CanvasCourse(
+                                        id: id,
+                                        name: name,
+                                        enrollments: nil,
+                                        start_at: nil,
+                                        end_at: nil
+                                    )
+                                    extractedCourses.append(course)
+                                }
+                            }
+                            
+                            if !extractedCourses.isEmpty {
+                                self.courses.append(contentsOf: extractedCourses)
+                                print("[Canvas API] Dynamically extracted \(extractedCourses.count) USyd courses")
+                                completion(true)
+                                return
+                            }
+                        }
+                    }
+                    
+                    // If all attempts failed
+                    print("[Canvas API] Failed to extract USyd courses through all methods")
+                    completion(false)
+                    
+                } catch {
+                    print("[Canvas API] USyd JSON parsing error: \(error)")
+                    completion(false)
+                }
+            }
+        }.resume()
+    }
+    
+    // Helper to save JSON to a file for debugging
+    private func saveJsonToFile(jsonString: String, filename: String) {
+        if let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let fileURL = documentsDirectory.appendingPathComponent(filename)
+            do {
+                try jsonString.write(to: fileURL, atomically: true, encoding: .utf8)
+                print("[Canvas API] Saved JSON to \(fileURL.path)")
+            } catch {
+                print("[Canvas API] Failed to save JSON: \(error)")
+            }
+        }
     }
     
     // Extract next page URL from Link header
@@ -696,41 +942,46 @@ class CanvasIntegrationViewModel: ObservableObject {
                     return
                 }
                 
-                do {
-                    // First try standard decoding
-                    if let assignments = try? JSONDecoder().decode([CanvasAssignment].self, from: data) {
-                        self.assignmentsByCourseId[courseID] = assignments
-                        completion()
-                        return
+                // ENHANCED DEBUGGING: Log the raw JSON for USyd
+                if self.selectedUniversityName.contains("USyd") || self.selectedUniversityName.contains("Sydney") {
+                    if let jsonString = String(data: data, encoding: .utf8) {
+                        print("[Canvas API - USyd] Raw Assignments JSON for course \(courseID): \(jsonString)")
+                        self.saveJsonToFile(jsonString: jsonString, filename: "usyd_assignments_\(courseID).json")
                     }
-                    
-                    // If that fails, try manual parsing of the JSON
+                }
+                
+                do {
+                    // First check if it's a wrapper object
                     let json = try JSONSerialization.jsonObject(with: data)
                     
+                    // First try standard array format
                     if let assignmentsArray = json as? [[String: Any]] {
-                        var parsedAssignments: [CanvasAssignment] = []
-                        
-                        for assignmentDict in assignmentsArray {
-                            if let id = assignmentDict["id"] as? Int,
-                               let name = assignmentDict["name"] as? String {
-                                // Create a minimal valid assignment
-                                let assignment = CanvasAssignment(
-                                    id: id,
-                                    name: name,
-                                    due_at: assignmentDict["due_at"] as? String,
-                                    submission_types: assignmentDict["submission_types"] as? [String],
-                                    has_submitted_submissions: assignmentDict["has_submitted_submissions"] as? Bool,
-                                    html_url: assignmentDict["html_url"] as? String
-                                )
-                                parsedAssignments.append(assignment)
-                            }
-                        }
-                        
+                        let parsedAssignments = self.parseAssignmentsArray(assignmentsArray, forCourse: courseID)
                         if !parsedAssignments.isEmpty {
                             self.assignmentsByCourseId[courseID] = parsedAssignments
+                            print("[Canvas API] Successfully parsed \(parsedAssignments.count) assignments for course \(courseID)")
                             completion()
                             return
                         }
+                    }
+                    
+                    // Then try nested format
+                    if let responseDict = json as? [String: Any] {
+                        // Check common wrapper keys
+                        for key in ["assignments", "data", "items"] {
+                            if let assignmentsArray = responseDict[key] as? [[String: Any]] {
+                                let parsedAssignments = self.parseAssignmentsArray(assignmentsArray, forCourse: courseID)
+                                if !parsedAssignments.isEmpty {
+                                    self.assignmentsByCourseId[courseID] = parsedAssignments
+                                    print("[Canvas API] Successfully parsed \(parsedAssignments.count) assignments from \(key) key for course \(courseID)")
+                                    completion()
+                                    return
+                                }
+                            }
+                        }
+                        
+                        // Print available keys for debugging
+                        print("[Canvas API] Assignment response keys: \(responseDict.keys.joined(separator: ", "))")
                     }
                     
                     // If we get here, we couldn't parse the assignments
@@ -743,6 +994,29 @@ class CanvasIntegrationViewModel: ObservableObject {
                 }
             }
         }.resume()
+    }
+    
+    // Add a helper method to parse assignments array
+    private func parseAssignmentsArray(_ assignmentsArray: [[String: Any]], forCourse courseID: Int) -> [CanvasAssignment] {
+        var parsedAssignments: [CanvasAssignment] = []
+        
+        for assignmentDict in assignmentsArray {
+            if let id = assignmentDict["id"] as? Int ?? assignmentDict["assignment_id"] as? Int,
+               let name = assignmentDict["name"] as? String ?? assignmentDict["title"] as? String {
+                // Create a minimal valid assignment
+                let assignment = CanvasAssignment(
+                    id: id,
+                    name: name,
+                    due_at: assignmentDict["due_at"] as? String ?? assignmentDict["due_date"] as? String,
+                    submission_types: assignmentDict["submission_types"] as? [String],
+                    has_submitted_submissions: assignmentDict["has_submitted_submissions"] as? Bool,
+                    html_url: assignmentDict["html_url"] as? String ?? assignmentDict["url"] as? String
+                )
+                parsedAssignments.append(assignment)
+            }
+        }
+        
+        return parsedAssignments
     }
     
     // Computed property to get filtered assignments based on type selection
@@ -758,6 +1032,18 @@ class CanvasIntegrationViewModel: ObservableObject {
 }
 
 // MARK: - Canvas API Models
+
+// Add a specialized wrapper for USyd's format
+struct USydCoursesResponse: Codable {
+    let data: [USydCourse]
+    
+    struct USydCourse: Codable {
+        let id: Int
+        let name: String
+        let course_code: String?
+    }
+}
+
 struct CanvasCourse: Codable, Identifiable {
     struct Enrollment: Codable {
         let type: String?
