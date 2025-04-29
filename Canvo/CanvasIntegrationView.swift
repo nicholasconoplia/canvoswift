@@ -21,8 +21,22 @@ let UNIVERSITIES: [University] = [
     University(name: "Macquarie University", url: "https://ilearn.mq.edu.au"),
     University(name: "Western Sydney University", url: "https://vuws.westernsydney.edu.au"),
     University(name: "Australian Catholic University", url: "https://canvas.acu.edu.au"),
-    University(name: "Custom University", url: "") // Represents the custom option;[]
-    
+    University(name: "UNSW Sydney", url: "https://moodle.telt.unsw.edu.au"),
+    University(name: "University of Melbourne", url: "https://canvas.lms.unimelb.edu.au"),
+    University(name: "Monash University", url: "https://lms.monash.edu"),
+    University(name: "Queensland University of Technology", url: "https://canvas.qut.edu.au"),
+    University(name: "University of Queensland", url: "https://learn.uq.edu.au"),
+    University(name: "RMIT University", url: "https://canvas.rmit.edu.au"),
+    University(name: "La Trobe University", url: "https://lms.latrobe.edu.au"),
+    University(name: "Deakin University", url: "https://d2l.deakin.edu.au"),
+    University(name: "Curtin University", url: "https://lms.curtin.edu.au"),
+    University(name: "University of Western Australia", url: "https://lms.uwa.edu.au"),
+    University(name: "University of Adelaide", url: "https://myuni.adelaide.edu.au"),
+    University(name: "Flinders University", url: "https://flo.flinders.edu.au"),
+    University(name: "University of Tasmania", url: "https://mylo.utas.edu.au"),
+    University(name: "Charles Sturt University", url: "https://interact2.csu.edu.au"),
+    University(name: "University of New England", url: "https://moodle.une.edu.au"),
+    University(name: "Custom University", url: "") // Represents the custom option
 ]
 
 // MARK: - Canvas Integration ViewModel
@@ -80,11 +94,19 @@ class CanvasIntegrationViewModel: ObservableObject {
 
     // Computed property for the effective Canvas URL
     var effectiveCanvasURL: String {
-        if isCustomUniversitySelected {
-            return customUniversityURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        } else {
-            return selectedUniversity.url
+        let baseURL = isCustomUniversitySelected ? 
+            customUniversityURL.trimmingCharacters(in: .whitespacesAndNewlines) :
+            selectedUniversity.url
+        
+        // Remove trailing slashes
+        var cleanURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        
+        // Ensure URL has https:// prefix
+        if !cleanURL.lowercased().hasPrefix("http") {
+            cleanURL = "https://" + cleanURL
         }
+        
+        return cleanURL
     }
 
     init() {
@@ -206,7 +228,11 @@ class CanvasIntegrationViewModel: ObservableObject {
 
     // MARK: - Fetch Logic
     func fetchCanvasData() {
-        guard !apiKey.isEmpty, !effectiveCanvasURL.isEmpty else { return }
+        guard !apiKey.isEmpty, !effectiveCanvasURL.isEmpty else { 
+            self.errorMessage = "Please enter your Canvas API key and select a university."
+            return 
+        }
+        
         isLoading = true
         errorMessage = nil
         courses = [] // Clear existing courses before fetching
@@ -216,31 +242,111 @@ class CanvasIntegrationViewModel: ObservableObject {
         print("[Canvas API] API Key length: \(apiKey.count) characters")
         print("[Canvas API] Selected University: \(selectedUniversityName)")
         
-        // Try direct endpoint for all known Canvas instances
-        fetchWithEndpoint("/api/v1/users/self/courses") { success in
+        // First verify API connectivity with a simple request
+        verifyAPIConnection { success in
             if success {
-                // After fetching all courses, apply filtering
-                self.processFetchedCourses()
-            } else {
-                // If that failed, try alternative endpoint
-                print("[Canvas API] First endpoint failed, trying alternative...")
-                self.fetchWithEndpoint("/api/v1/courses") { success in
+                // If connection is successful, start fetching courses
+                self.fetchWithEndpoint("/api/v1/users/self/courses") { success in
                     if success {
+                        // After fetching all courses, apply filtering
                         self.processFetchedCourses()
                     } else {
-            self.isLoading = false
-                        // If all attempts fail, give more specific error
-                        self.errorMessage = "Could not fetch courses. Please check your Canvas URL and API key. You may need to regenerate your API key."
+                        // If all course fetching attempts failed, give more specific error
+                        self.isLoading = false
+                        if self.errorMessage == nil {
+                            self.errorMessage = "Could not fetch courses. Please check your Canvas URL and API key. You may need to regenerate your API key."
+                        }
                     }
+                }
+            } else {
+                // Connection test failed
+                self.isLoading = false
+                if self.errorMessage == nil {
+                    self.errorMessage = "Could not connect to Canvas. Please verify your API key and Canvas URL."
                 }
             }
         }
     }
     
+    // Verify the API connection with a simple request
+    private func verifyAPIConnection(completion: @escaping (Bool) -> Void) {
+        // Use the /api/v1/users/self endpoint which should be consistent across Canvas instances
+        let urlString = "\(effectiveCanvasURL)/api/v1/users/self"
+        
+        guard let url = URL(string: urlString) else {
+            self.errorMessage = "Invalid Canvas URL: \(urlString)"
+            completion(false)
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpMethod = "GET"
+        
+        print("[Canvas API] Verifying connection to: \(url.absoluteString)")
+        
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.errorMessage = "Network error: \(error.localizedDescription)"
+                    completion(false)
+                    return
+                }
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    self.errorMessage = "Invalid response from server."
+                    completion(false)
+                    return
+                }
+                
+                // Handle HTTP errors with specific messages
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    switch httpResponse.statusCode {
+                    case 401:
+                        self.errorMessage = "Unauthorized. Please check your API key."
+                    case 403:
+                        self.errorMessage = "Forbidden. Your API key may not have sufficient permissions."
+                    case 404:
+                        self.errorMessage = "API endpoint not found. Please check your Canvas URL."
+                    default:
+                        let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "(no response body)"
+                        self.errorMessage = "API Error (\(httpResponse.statusCode)): \(body.prefix(100))"
+                    }
+                    print("[Canvas API] Connection test failed with status: \(httpResponse.statusCode)")
+                    completion(false)
+                    return
+                }
+                
+                // Connection successful
+                print("[Canvas API] Connection test successful")
+                completion(true)
+            }
+        }.resume()
+    }
+    
     // Wrapper function to try both endpoints
     private func fetchWithEndpoint(_ endpoint: String, completion: @escaping (Bool) -> Void) {
         fetchAllCourses(endpoint: endpoint) { success in
-            completion(success)
+            if success {
+                completion(true)
+            } else if endpoint == "/api/v1/users/self/courses" {
+                // If the first endpoint fails, try alternative endpoints
+                self.fetchAllCourses(endpoint: "/api/v1/courses") { success in
+                    if success {
+                        completion(true)
+                    } else {
+                        // Try one more common endpoint pattern used by some universities
+                        self.fetchAllCourses(endpoint: "/api/v1/courses?enrollment_state=active") { success in
+                            completion(success)
+                        }
+                    }
+                }
+            } else {
+                completion(false)
+            }
         }
     }
     
@@ -656,7 +762,46 @@ struct CanvasCourse: Codable, Identifiable {
     struct Enrollment: Codable {
         let type: String?
         let enrollment_state: String?
+        
+        enum CodingKeys: String, CodingKey {
+            case type, enrollment_state
+            // Handle alternate keys sometimes used
+            case role = "role"
+            case state = "state"
+        }
+        
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            
+            // Try primary keys first
+            if let typeValue = try? container.decode(String.self, forKey: .type) {
+                type = typeValue
+            } else if let roleValue = try? container.decode(String.self, forKey: .role) {
+                // Some Canvas instances use "role" instead of "type"
+                type = roleValue
+            } else {
+                type = nil
+            }
+            
+            // Try primary keys first for state
+            if let stateValue = try? container.decode(String.self, forKey: .enrollment_state) {
+                enrollment_state = stateValue
+            } else if let altStateValue = try? container.decode(String.self, forKey: .state) {
+                // Some Canvas instances use "state" instead of "enrollment_state"
+                enrollment_state = altStateValue
+            } else {
+                enrollment_state = nil
+            }
+        }
+        
+        // Add encode method for Encodable conformance
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(type, forKey: .type)
+            try container.encode(enrollment_state, forKey: .enrollment_state)
+        }
     }
+    
     let id: Int
     let name: String
     let enrollments: [Enrollment]?
@@ -665,24 +810,78 @@ struct CanvasCourse: Codable, Identifiable {
     
     // Add CodingKeys to make the model more flexible
     enum CodingKeys: String, CodingKey {
-        case id
-        case name
-        case enrollments
-        case start_at
-        case end_at
+        case id, name, enrollments, start_at, end_at
+    }
+    
+    // Alternative keys for decoding only
+    private enum AlternativeKeys: String, CodingKey {
+        case course_id
+        case course_name = "course_name"
+        case title = "title"
+        case start_date = "start_date"
+        case end_date = "end_date"
     }
     
     // Custom initializer to handle potential missing fields
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let alternativeContainer = try? decoder.container(keyedBy: AlternativeKeys.self)
         
-        id = try container.decode(Int.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
+        // Try to decode id using multiple potential keys
+        if let idValue = try? container.decode(Int.self, forKey: .id) {
+            id = idValue
+        } else if let courseIdValue = try? alternativeContainer?.decode(Int.self, forKey: .course_id) {
+            id = courseIdValue
+        } else {
+            // This is required, so throw if not found
+            throw DecodingError.valueNotFound(Int.self, DecodingError.Context(
+                codingPath: [CodingKeys.id], 
+                debugDescription: "Course ID not found under any expected key"))
+        }
         
-        // Handle optional fields that might be missing in some Canvas instances
+        // Try to decode name using multiple potential keys
+        if let nameValue = try? container.decode(String.self, forKey: .name) {
+            name = nameValue
+        } else if let courseNameValue = try? alternativeContainer?.decode(String.self, forKey: .course_name) {
+            name = courseNameValue
+        } else if let titleValue = try? alternativeContainer?.decode(String.self, forKey: .title) {
+            name = titleValue
+        } else {
+            // This is required, so throw if not found
+            throw DecodingError.valueNotFound(String.self, DecodingError.Context(
+                codingPath: [CodingKeys.name], 
+                debugDescription: "Course name not found under any expected key"))
+        }
+        
+        // Handle optional fields that might be named differently in some Canvas instances
         enrollments = try? container.decode([Enrollment]?.self, forKey: .enrollments)
-        start_at = try? container.decode(String?.self, forKey: .start_at)
-        end_at = try? container.decode(String?.self, forKey: .end_at)
+        
+        // Try different date field names
+        if let startDate = try? container.decode(String?.self, forKey: .start_at) {
+            start_at = startDate
+        } else if let altStartDate = try? alternativeContainer?.decode(String?.self, forKey: .start_date) {
+            start_at = altStartDate
+        } else {
+            start_at = nil
+        }
+        
+        if let endDate = try? container.decode(String?.self, forKey: .end_at) {
+            end_at = endDate
+        } else if let altEndDate = try? alternativeContainer?.decode(String?.self, forKey: .end_date) {
+            end_at = altEndDate
+        } else {
+            end_at = nil
+        }
+    }
+    
+    // Add encode method for Encodable conformance
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(enrollments, forKey: .enrollments)
+        try container.encode(start_at, forKey: .start_at)
+        try container.encode(end_at, forKey: .end_at)
     }
     
     init(id: Int, name: String, enrollments: [Enrollment]?, start_at: String?, end_at: String?) {
@@ -731,6 +930,106 @@ struct CanvasAssignment: Codable, Identifiable {
     let submission_types: [String]?
     let has_submitted_submissions: Bool?
     let html_url: String?
+    
+    // Add more flexible coding keys
+    enum CodingKeys: String, CodingKey {
+        case id, name, due_at, submission_types, has_submitted_submissions, html_url
+    }
+    
+    // Alternative keys for decoding only
+    private enum AlternativeKeys: String, CodingKey {
+        case assignment_id = "assignment_id"
+        case title = "title"
+        case due_date = "due_date"
+        case submit_types = "submit_types"
+        case submitted = "submitted"
+        case url = "url"
+    }
+    
+    // Custom initializer to handle variations in field names
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let alternativeContainer = try? decoder.container(keyedBy: AlternativeKeys.self)
+        
+        // Try different ID keys
+        if let idValue = try? container.decode(Int.self, forKey: .id) {
+            id = idValue
+        } else if let assignmentId = try? alternativeContainer?.decode(Int.self, forKey: .assignment_id) {
+            id = assignmentId
+        } else {
+            throw DecodingError.valueNotFound(Int.self, DecodingError.Context(
+                codingPath: [CodingKeys.id], 
+                debugDescription: "Assignment ID not found under any expected key"))
+        }
+        
+        // Try different name keys
+        if let nameValue = try? container.decode(String.self, forKey: .name) {
+            name = nameValue
+        } else if let titleValue = try? alternativeContainer?.decode(String.self, forKey: .title) {
+            name = titleValue
+        } else {
+            throw DecodingError.valueNotFound(String.self, DecodingError.Context(
+                codingPath: [CodingKeys.name], 
+                debugDescription: "Assignment name not found under any expected key"))
+        }
+        
+        // Try different due date keys
+        if let dueAtValue = try? container.decode(String?.self, forKey: .due_at) {
+            due_at = dueAtValue
+        } else if let dueDateValue = try? alternativeContainer?.decode(String?.self, forKey: .due_date) {
+            due_at = dueDateValue
+        } else {
+            due_at = nil
+        }
+        
+        // Try different submission types keys
+        if let submissionTypesValue = try? container.decode([String]?.self, forKey: .submission_types) {
+            submission_types = submissionTypesValue
+        } else if let submitTypesValue = try? alternativeContainer?.decode([String]?.self, forKey: .submit_types) {
+            submission_types = submitTypesValue
+        } else {
+            submission_types = nil
+        }
+        
+        // Try different submission status keys
+        if let submittedValue = try? container.decode(Bool?.self, forKey: .has_submitted_submissions) {
+            has_submitted_submissions = submittedValue
+        } else if let altSubmittedValue = try? alternativeContainer?.decode(Bool?.self, forKey: .submitted) {
+            has_submitted_submissions = altSubmittedValue
+        } else {
+            has_submitted_submissions = nil
+        }
+        
+        // Try different URL keys
+        if let htmlUrlValue = try? container.decode(String?.self, forKey: .html_url) {
+            html_url = htmlUrlValue
+        } else if let urlValue = try? alternativeContainer?.decode(String?.self, forKey: .url) {
+            html_url = urlValue
+        } else {
+            html_url = nil
+        }
+    }
+    
+    // Add encode method for Encodable conformance
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(due_at, forKey: .due_at)
+        try container.encode(submission_types, forKey: .submission_types)
+        try container.encode(has_submitted_submissions, forKey: .has_submitted_submissions)
+        try container.encode(html_url, forKey: .html_url)
+    }
+    
+    // Existing initializer
+    init(id: Int, name: String, due_at: String?, submission_types: [String]?, has_submitted_submissions: Bool?, html_url: String?) {
+        self.id = id
+        self.name = name
+        self.due_at = due_at
+        self.submission_types = submission_types
+        self.has_submitted_submissions = has_submitted_submissions
+        self.html_url = html_url
+    }
     
     // Computed properties for UI display
     var formattedDueDate: String {
