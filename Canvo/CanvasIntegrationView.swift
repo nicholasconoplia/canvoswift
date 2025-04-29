@@ -20,7 +20,7 @@ struct University: Identifiable, Hashable {
 // MARK: - Predefined Universities
 let UNIVERSITIES: [University] = [
     University(name: "University of Technology Sydney (UTS)", url: "https://canvas.uts.edu.au"),
-    University(name: "University of Sydney (USyd)", url: "https://canvas.sydney.edu.au/api"),
+    University(name: "University of Sydney (USyd)", url: "https://canvas.sydney.edu.au"),
     University(name: "Macquarie University", url: "https://ilearn.mq.edu.au"),
     University(name: "Western Sydney University", url: "https://vuws.westernsydney.edu.au"),
     University(name: "Australian Catholic University", url: "https://canvas.acu.edu.au"),
@@ -200,7 +200,7 @@ struct CanvasIntegrationView: View {
                 HStack(spacing: 16) {
                     // Course filter
                     FilterPillButton(
-                        title: viewModel.selectedCourseId == nil ? "All Courses" : viewModel.courses.first(where: { $0.id == viewModel.selectedCourseId })?.name ?? "Course",
+                        title: viewModel.selectedCourseId == nil ? "All Courses" : viewModel.courses.first(where: { $0.id == viewModel.selectedCourseId })?.displayName ?? "Course",
                         isActive: true
                     ) {
                         showingCourseFilterMenu = true
@@ -212,7 +212,7 @@ struct CanvasIntegrationView: View {
                         
                         // Add buttons for each course
                         for course in viewModel.courses {
-                            buttons.append(.default(Text(course.name)) { 
+                            buttons.append(.default(Text(course.displayName)) { 
                                 viewModel.selectedCourseId = course.id 
                             })
                         }
@@ -487,7 +487,7 @@ struct CourseCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Course Header
-            Text(course.name)
+            Text(course.displayName)
                 .font(.headline)
                 .foregroundColor(.white)
                 .padding(.vertical, 12)

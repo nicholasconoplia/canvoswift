@@ -55,17 +55,23 @@ class CanvasIntegrationViewModel: ObservableObject {
     var selectedUniversity: University {
         get {
             if let university = UNIVERSITIES.first(where: { $0.name == selectedUniversityName }) {
+                print("DEBUG: Currently selected university: \(university.name) with URL: \(university.url)")
                 return university
             }
+            print("DEBUG: Defaulting to first university: \(UNIVERSITIES[0].name)")
             return UNIVERSITIES[0]
         }
         set {
+            print("DEBUG: Changing university from \(selectedUniversityName) to \(newValue.name)")
+            print("DEBUG: New URL will be: \(newValue.url)")
             selectedUniversityName = newValue.name
             isCustomUniversitySelected = (newValue.name == "Custom University")
             if !isCustomUniversitySelected {
                 customUniversityName = ""
                 customUniversityURL = ""
             }
+            // Clear any previous error message when university changes
+            errorMessage = nil
         }
     }
 
@@ -83,6 +89,7 @@ class CanvasIntegrationViewModel: ObservableObject {
             cleanURL = "https://" + cleanURL
         }
         
+        print("DEBUG: Effective Canvas URL being used: \(cleanURL)")
         return cleanURL
     }
     
@@ -216,6 +223,9 @@ class CanvasIntegrationViewModel: ObservableObject {
             return 
         }
         
+        print("DEBUG: Starting Canvas data fetch with URL: \(effectiveCanvasURL)")
+        print("DEBUG: API Key length: \(apiKey.count) characters")
+        
         isLoading = true
         errorMessage = nil
         courses = [] // Clear existing courses before fetching
@@ -230,9 +240,11 @@ class CanvasIntegrationViewModel: ObservableObject {
                 guard let self = self else { return }
                 
                 if success {
+                    print("DEBUG: Connection verified successfully, fetching courses...")
                     // If connection is successful, fetch courses
                     self.fetchCourses()
                 } else {
+                    print("DEBUG: Connection failed with error: \(errorMsg ?? "Unknown error")")
                     self.isLoading = false
                     self.errorMessage = errorMsg ?? "Could not connect to Canvas. Please verify your API key and Canvas URL."
                 }
@@ -242,6 +254,8 @@ class CanvasIntegrationViewModel: ObservableObject {
     
     // Fetch courses using CanvasKit
     private func fetchCourses() {
+        print("DEBUG: Fetching courses from \(effectiveCanvasURL)")
+        
         canvasKit?.fetchCourses { [weak self] result in
             // Jump back to main thread
             DispatchQueue.main.async {
@@ -249,9 +263,26 @@ class CanvasIntegrationViewModel: ObservableObject {
                 
                 switch result {
                 case .success(let fetchedCourses):
+                    print("DEBUG: Successfully fetched \(fetchedCourses.count) courses")
                     // Process fetched courses in a thread-safe manner
                     self.processFetchedCourses(fetchedCourses)
                 case .failure(let error):
+                    print("DEBUG: Failed to fetch courses with error: \(error)")
+                    if let decodingError = error as? DecodingError {
+                        print("DEBUG: Decoding error details: \(decodingError)")
+                        switch decodingError {
+                        case .dataCorrupted(let context):
+                            print("DEBUG: Data corrupted: \(context.debugDescription)")
+                        case .keyNotFound(let key, let context):
+                            print("DEBUG: Key not found: \(key.stringValue) - \(context.debugDescription)")
+                        case .typeMismatch(let type, let context):
+                            print("DEBUG: Type mismatch: Expected \(type) - \(context.debugDescription)")
+                        case .valueNotFound(let type, let context):
+                            print("DEBUG: Value not found: Expected \(type) - \(context.debugDescription)")
+                        @unknown default:
+                            print("DEBUG: Unknown decoding error")
+                        }
+                    }
                     self.isLoading = false
                     self.errorMessage = "Error fetching courses: \(error.localizedDescription)"
                 }
@@ -269,7 +300,7 @@ class CanvasIntegrationViewModel: ObservableObject {
             fetchedCourses.filter { $0.isCurrent } : 
             fetchedCourses
         
-        let sortedCourses = filteredCourses.sorted { $0.name < $1.name }
+        let sortedCourses = filteredCourses.sorted { $0.displayName < $1.displayName }
         
         // Update on main thread (we're already on main thread from fetchCourses)
         self.courses = sortedCourses

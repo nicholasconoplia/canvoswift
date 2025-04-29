@@ -18,10 +18,15 @@ struct CanvasKitCourse: Codable, Identifiable {
     }
     
     let id: Int
-    let name: String
+    let name: String?
     let enrollments: [Enrollment]?
     let start_at: String?
     let end_at: String?
+    
+    // Name accessor with fallback to avoid nil values
+    var displayName: String {
+        return name ?? "Unnamed Course #\(id)"
+    }
     
     var isCurrent: Bool {
         guard let start = start_at, let end = end_at else { 
@@ -166,30 +171,78 @@ class CanvasKit {
     
     /// Helper method to fetch from a specific endpoint
     private func fetchFromEndpoint(_ endpoint: String, completion: @escaping (Result<[CanvasKitCourse], Error>) -> Void) {
-        let urlString = "\(baseURL)\(endpoint)?per_page=100"
+        // Make sure the endpoint has the required /api/v1 prefix
+        let apiEndpoint = endpoint.hasPrefix("/api/v1") ? endpoint : "/api/v1\(endpoint)"
+        let urlString = "\(baseURL)\(apiEndpoint)?per_page=100"
+        
+        print("DEBUG: Making API request to: \(urlString)")
+        print("DEBUG: Using authorization header with token length: \(apiKey.count)")
         
         AF.request(urlString, headers: headers)
             .validate()
-            .responseDecodable(of: [CanvasKitCourse].self) { [weak self] response in
+            .responseData { [weak self] response in
+                print("DEBUG: Response status code: \(response.response?.statusCode ?? 0)")
+                
+                if let data = response.data, let dataString = String(data: data, encoding: .utf8) {
+                    print("DEBUG: Raw response data (\(data.count) bytes): \(dataString.prefix(500))...")
+                }
+                
                 switch response.result {
-                case .success(let courses):
-                    completion(.success(courses))
-                case .failure(let error):
-                    // If decoding fails, try to handle wrapped response format
-                    if let data = response.data {
+                case .success(let data):
+                    do {
+                        // First try to directly decode as an array of courses
+                        let courses = try JSONDecoder().decode([CanvasKitCourse].self, from: data)
+                        print("DEBUG: Successfully decoded \(courses.count) courses directly")
+                        completion(.success(courses))
+                    } catch let directError {
+                        print("DEBUG: Failed to decode directly: \(directError)")
+                        
+                        // If that fails, try to parse the JSON manually
                         do {
-                            // Try to decode as a wrapped response
-                            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                               let coursesArray = json["courses"] as? [[String: Any]] {
+                            if let json = try JSONSerialization.jsonObject(with: data) as? [Any] {
+                                print("DEBUG: Successfully parsed as JSON array")
+                                
+                                // Create a custom decoder that can handle missing fields
+                                let decoder = JSONDecoder()
+                                var coursesArray: [CanvasKitCourse] = []
+                                
+                                // Process each item in the array
+                                for (index, item) in json.enumerated() {
+                                    do {
+                                        // Convert item back to data
+                                        let itemData = try JSONSerialization.data(withJSONObject: item)
+                                        let course = try decoder.decode(CanvasKitCourse.self, from: itemData)
+                                        coursesArray.append(course)
+                                    } catch let itemError {
+                                        print("DEBUG: Skipping item \(index) due to error: \(itemError)")
+                                        // Continue processing other items
+                                    }
+                                }
+                                
+                                if !coursesArray.isEmpty {
+                                    print("DEBUG: Successfully decoded \(coursesArray.count) courses from manual parsing")
+                                    completion(.success(coursesArray))
+                                    return
+                                }
+                            } else if let jsonDict = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                                      let coursesArray = jsonDict["courses"] as? [[String: Any]] {
+                                // Try to handle wrapped response
+                                print("DEBUG: Found courses array in wrapped response")
                                 let coursesData = try JSONSerialization.data(withJSONObject: coursesArray)
                                 let courses = try JSONDecoder().decode([CanvasKitCourse].self, from: coursesData)
+                                print("DEBUG: Successfully decoded \(courses.count) courses from wrapped response")
                                 completion(.success(courses))
                                 return
                             }
-                        } catch {
-                            print("Error parsing wrapped courses: \(error)")
+                        } catch let jsonError {
+                            print("DEBUG: JSON parsing error: \(jsonError)")
                         }
+                        
+                        // If we got here, all decoding attempts failed
+                        completion(.failure(directError))
                     }
+                case .failure(let error):
+                    print("DEBUG: Request failed with error: \(error)")
                     completion(.failure(error))
                 }
             }
@@ -199,28 +252,73 @@ class CanvasKit {
     func fetchAssignments(forCourseId courseId: Int, completion: @escaping (Result<[CanvasKitAssignment], Error>) -> Void) {
         let urlString = "\(baseURL)/api/v1/courses/\(courseId)/assignments?per_page=100"
         
+        print("DEBUG: Fetching assignments from: \(urlString)")
+        
         AF.request(urlString, headers: headers)
             .validate()
-            .responseDecodable(of: [CanvasKitAssignment].self) { [weak self] response in
+            .responseData { response in
+                print("DEBUG: Assignments response status code: \(response.response?.statusCode ?? 0)")
+                
+                if let data = response.data, let dataString = String(data: data, encoding: .utf8) {
+                    print("DEBUG: Raw assignments data (\(data.count) bytes): \(dataString.prefix(200))...")
+                }
+                
                 switch response.result {
-                case .success(let assignments):
-                    completion(.success(assignments))
-                case .failure(let error):
-                    // If decoding fails, try to handle wrapped response format
-                    if let data = response.data {
+                case .success(let data):
+                    do {
+                        // First try to directly decode as an array of assignments
+                        let assignments = try JSONDecoder().decode([CanvasKitAssignment].self, from: data)
+                        print("DEBUG: Successfully decoded \(assignments.count) assignments directly")
+                        completion(.success(assignments))
+                    } catch let directError {
+                        print("DEBUG: Failed to decode assignments directly: \(directError)")
+                        
+                        // If that fails, try to parse the JSON manually
                         do {
-                            // Try to decode as a wrapped response
-                            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                               let assignmentsArray = json["assignments"] as? [[String: Any]] {
+                            if let json = try JSONSerialization.jsonObject(with: data) as? [Any] {
+                                print("DEBUG: Successfully parsed assignments as JSON array")
+                                
+                                // Create a custom decoder that can handle missing fields
+                                let decoder = JSONDecoder()
+                                var assignmentsArray: [CanvasKitAssignment] = []
+                                
+                                // Process each item in the array
+                                for (index, item) in json.enumerated() {
+                                    do {
+                                        // Convert item back to data
+                                        let itemData = try JSONSerialization.data(withJSONObject: item)
+                                        let assignment = try decoder.decode(CanvasKitAssignment.self, from: itemData)
+                                        assignmentsArray.append(assignment)
+                                    } catch let itemError {
+                                        print("DEBUG: Skipping assignment \(index) due to error: \(itemError)")
+                                        // Continue processing other items
+                                    }
+                                }
+                                
+                                if !assignmentsArray.isEmpty {
+                                    print("DEBUG: Successfully decoded \(assignmentsArray.count) assignments from manual parsing")
+                                    completion(.success(assignmentsArray))
+                                    return
+                                }
+                            } else if let jsonDict = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                                      let assignmentsArray = jsonDict["assignments"] as? [[String: Any]] {
+                                // Try to handle wrapped response
+                                print("DEBUG: Found assignments array in wrapped response")
                                 let assignmentsData = try JSONSerialization.data(withJSONObject: assignmentsArray)
                                 let assignments = try JSONDecoder().decode([CanvasKitAssignment].self, from: assignmentsData)
+                                print("DEBUG: Successfully decoded \(assignments.count) assignments from wrapped response")
                                 completion(.success(assignments))
                                 return
                             }
-                        } catch {
-                            print("Error parsing wrapped assignments: \(error)")
+                        } catch let jsonError {
+                            print("DEBUG: JSON parsing error for assignments: \(jsonError)")
                         }
+                        
+                        // If we got here, all decoding attempts failed
+                        completion(.failure(directError))
                     }
+                case .failure(let error):
+                    print("DEBUG: Assignment request failed with error: \(error)")
                     completion(.failure(error))
                 }
             }
@@ -230,20 +328,32 @@ class CanvasKit {
     func verifyConnection(completion: @escaping (Bool, String?) -> Void) {
         let urlString = "\(baseURL)/api/v1/users/self"
         
+        print("DEBUG: Verifying connection to: \(urlString)")
+        
         AF.request(urlString, headers: headers)
             .validate()
             .response { [weak self] response in
+                print("DEBUG: Verification response status code: \(response.response?.statusCode ?? 0)")
+                
+                if let data = response.data, let dataString = String(data: data, encoding: .utf8) {
+                    print("DEBUG: Verification raw response: \(dataString)")
+                }
+                
                 switch response.result {
                 case .success:
+                    print("DEBUG: Connection verified successfully")
                     completion(true, nil)
                 case .failure(let error):
+                    print("DEBUG: Connection verification failed: \(error)")
                     var message = "Failed to connect: \(error.localizedDescription)"
                     
                     // Extract more detailed error message if available
                     if let data = response.data, let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                        let errorMessage = errorJson["message"] as? String {
+                        print("DEBUG: Error message from API: \(errorMessage)")
                         message = errorMessage
                     } else if let statusCode = response.response?.statusCode {
+                        print("DEBUG: HTTP status code: \(statusCode)")
                         switch statusCode {
                         case 401:
                             message = "Unauthorized. Please check your API key."
