@@ -158,6 +158,34 @@ struct CanvasKitAssignment: Codable, Identifiable {
     var isQuiz: Bool {
         return assignmentType == "Quiz" || quiz_id != nil
     }
+    
+    // Days from now (negative for past dates, positive for future dates)
+    var daysFromNow: Int? {
+        guard let dueAtString = due_at else { return nil }
+        
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        
+        if let dueDate = formatter.date(from: dueAtString) {
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
+            let dueDateDay = calendar.startOfDay(for: dueDate)
+            let components = calendar.dateComponents([.day], from: today, to: dueDateDay)
+            return components.day
+        } else {
+            // Try without fractional seconds
+            formatter.formatOptions = [.withInternetDateTime]
+            if let dueDate = formatter.date(from: dueAtString) {
+                let calendar = Calendar.current
+                let today = calendar.startOfDay(for: Date())
+                let dueDateDay = calendar.startOfDay(for: dueDate)
+                let components = calendar.dateComponents([.day], from: today, to: dueDateDay)
+                return components.day
+            }
+        }
+        
+        return nil
+    }
 }
 
 // MARK: - CanvasKit Client

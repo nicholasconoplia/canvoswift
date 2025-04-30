@@ -816,13 +816,12 @@ struct AssignmentCardView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Assignment name with submission status badge overlay
+            // Assignment name (without the submission status badge overlay)
             Text(assignment.name)
                 .font(.headline)
                 .foregroundColor(.primary)
-                .submissionStatusBadge(isSubmitted: assignment.submissionStatus.0 == "Submitted")
             
-            // Tags row
+            // Tags row with submission status
             HStack(spacing: 12) {
                 // Assignment type tag
                 Text(assignment.assignmentType)
@@ -833,6 +832,31 @@ struct AssignmentCardView: View {
                     .padding(.horizontal, 12)
                     .background(themeColor)
                     .cornerRadius(16)
+                
+                Spacer()
+                
+                // Submission status badge
+                if assignment.submissionStatus.0 == "Submitted" {
+                    Label("Submitted", systemImage: "checkmark")
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .cornerRadius(4)
+                } else {
+                    Text("Pending")
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(UIColor.systemGray5))
+                        .foregroundColor(Color(UIColor.systemGray))
+                        .cornerRadius(4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color(UIColor.systemGray4), lineWidth: 1)
+                        )
+                }
             }
             
             // Due date row
@@ -850,6 +874,26 @@ struct AssignmentCardView: View {
                         .padding(.horizontal, 12)
                         .background(themeColor)
                         .cornerRadius(16)
+                } else if let daysFromNow = assignment.daysFromNow {
+                    if daysFromNow > 0 {
+                        Text("in \(daysFromNow) \(daysFromNow == 1 ? "day" : "days")")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 12)
+                            .background(Color.blue)
+                            .cornerRadius(16)
+                    } else if daysFromNow < 0 {
+                        Text("\(abs(daysFromNow)) \(abs(daysFromNow) == 1 ? "day" : "days") ago")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 12)
+                            .background(Color.red)
+                            .cornerRadius(16)
+                    }
                 }
             }
             
