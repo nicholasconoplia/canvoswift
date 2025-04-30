@@ -270,6 +270,7 @@ class CanvasIntegrationViewModel: ObservableObject {
     
     // Fetch Canvas data using CanvasKit
     func fetchCanvasData() {
+        print("////// Start of refresh //////") // Add start marker
         guard !apiKey.isEmpty, !effectiveCanvasURL.isEmpty else { 
             self.errorMessage = "Please enter your Canvas API key and select a university."
             return 
@@ -408,6 +409,10 @@ class CanvasIntegrationViewModel: ObservableObject {
                     switch result {
                     case .success(let assignments):
                         print("DEBUG: Successfully fetched \(assignments.count) assignments for course ID: \(courseId)")
+                        // Print status JUST before assigning to published property
+                        for assignment in assignments {
+                            print("[ViewModel DEBUG] Assignment '\(assignment.name)' (ID: \(assignment.id)) status before assignment: \(assignment.submissionStatus)")
+                        }
                         self.assignmentsByCourseId[courseId] = assignments
                     case .failure(let error):
                         print("DEBUG: Failed to fetch assignments for course ID: \(courseId), error: \(error.localizedDescription)")
@@ -439,6 +444,8 @@ class CanvasIntegrationViewModel: ObservableObject {
             if self.isApiKeyConnected && !self.hasConfiguredVisibleCourses && !self.courses.isEmpty {
                 self.prepareCourseSelection()
             }
+
+            print("////// End of refresh - Finished refreshing assignments //////") // Add end marker
         }
     }
     

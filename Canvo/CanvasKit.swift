@@ -91,14 +91,43 @@ struct CanvasKitAssignment: Codable, Identifiable {
     // Submission status information (status, detailed status)
     var submissionStatus: (String, String) = ("Not Submitted", "Not yet submitted")
     
-    // Coding keys to ensure proper encoding/decoding of all properties
+    // Explicit Codable implementation to handle the submissionStatus tuple
     enum CodingKeys: String, CodingKey {
-        case id
-        case name
-        case due_at
-        case submission_types
-        case html_url
-        case quiz_id
+        case id, name, due_at, submission_types, html_url, quiz_id
+        case submissionStatus // Add key for our tuple
+    }
+    
+    // Custom initializer for decoding
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        due_at = try container.decodeIfPresent(String.self, forKey: .due_at)
+        submission_types = try container.decodeIfPresent([String].self, forKey: .submission_types)
+        html_url = try container.decodeIfPresent(String.self, forKey: .html_url)
+        quiz_id = try container.decodeIfPresent(Int.self, forKey: .quiz_id)
+
+        // Decode submissionStatus from an array, provide default if missing or invalid
+        if let statusArray = try container.decodeIfPresent([String].self, forKey: .submissionStatus), statusArray.count == 2 {
+            submissionStatus = (statusArray[0], statusArray[1])
+        } else {
+            // If key is missing or array is malformed, use default
+            submissionStatus = ("Not Submitted", "Not yet submitted")
+        }
+    }
+
+    // Custom encoder
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(due_at, forKey: .due_at)
+        try container.encodeIfPresent(submission_types, forKey: .submission_types)
+        try container.encodeIfPresent(html_url, forKey: .html_url)
+        try container.encodeIfPresent(quiz_id, forKey: .quiz_id)
+        
+        // Encode submissionStatus as an array of two strings
+        try container.encode([submissionStatus.0, submissionStatus.1], forKey: .submissionStatus)
     }
     
     // Computed properties

@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct TasksView: View {
+    @EnvironmentObject private var themeManager: ThemeManager
     // Binding to parent state
     @Binding var showingSettings: Bool
     @Binding var taskLists: [TaskList]
@@ -15,6 +16,8 @@ struct TasksView: View {
     @Binding var contextMenuTask: Task? 
     @Binding var contextMenuTaskListID: UUID?
     @Binding var showingContextMenu: Bool
+    @Binding var showingPriorityPicker: Bool
+    @Binding var showingContextMenuDatePicker: Bool
 
     // State local to TasksView
     @State private var newListName: String = ""
@@ -26,13 +29,17 @@ struct TasksView: View {
          isAddTaskExpanded: Binding<Bool>,
          contextMenuTask: Binding<Task?>,
          contextMenuTaskListID: Binding<UUID?>,
-         showingContextMenu: Binding<Bool>) {
+         showingContextMenu: Binding<Bool>,
+         showingPriorityPicker: Binding<Bool>,
+         showingContextMenuDatePicker: Binding<Bool>) {
         self._showingSettings = showingSettings
         self._taskLists = taskLists
         self._isAddTaskExpanded = isAddTaskExpanded
         self._contextMenuTask = contextMenuTask
         self._contextMenuTaskListID = contextMenuTaskListID
         self._showingContextMenu = showingContextMenu
+        self._showingPriorityPicker = showingPriorityPicker
+        self._showingContextMenuDatePicker = showingContextMenuDatePicker
         // Initialize expanded state based on the initial lists passed in
         _expandedListIDs = State(initialValue: Set(taskLists.wrappedValue.map { $0.id }))
     }
@@ -42,31 +49,21 @@ struct TasksView: View {
         ZStack {
             // Main content: List input and Task List Area
             VStack(alignment: .leading, spacing: 0) {
-                addListInputArea // Stays here
-                taskListArea     // Stays here
-            } // End Main VStack
-             // Removed sheet modifiers - handled in ContentView
+                addListInputArea
+                taskListArea
+            }
 
-            // Floating Add Button (in bottom right) - Stays here
+            // Floating Add Button
             VStack {
-                Spacer() // Push to bottom
+                Spacer()
                 HStack {
-                    Spacer() // Push to right
+                    Spacer()
                     floatingAddButton
                 }
                 .padding()
             }
-            .ignoresSafeArea(.keyboard) // Keep button visible when keyboard appears
-
-             // Removed Dimmed Background Overlay - handled in ContentView
-             // Removed Context Menu View - handled in ContentView
-             // Removed Notes Editor Overlay - handled in ContentView
-             // Removed Priority Picker Overlays - handled in ContentView
-             // Removed Add Task Form Overlay - handled in ContentView
+            .ignoresSafeArea(.keyboard)
         }
-         // Removed .onAppear / .onDisappear related to moved logic
-         // Removed .onChange(of: taskLists) - handled in ContentView
-         // Removed animation modifiers for overlays - handled in ContentView
     }
 
     // MARK: - Computed View Properties (Local to TasksView)
@@ -80,6 +77,7 @@ struct TasksView: View {
                 addList()
             }
             .buttonStyle(.borderedProminent)
+            .tint(themeManager.themeColor)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
@@ -97,39 +95,90 @@ struct TasksView: View {
                             .padding(.leading)
                     } else {
                         // Iterate over task indices to allow deletion/modification if needed
-                        // Or simply display tasks if direct modification isn't needed here
-                        ForEach(list.tasks) { task in 
-                            taskRow(for: task, in: list)
+                        ForEach($list.tasks) { $task in 
+                            taskRow(for: $task, in: list)
                                 .padding(.leading) 
                         }
                     }
                 } label: {
-                    Text(list.name)
-                        .font(.headline)
-                        .foregroundColor(.primary)
+                    // Make list name editable on long press
+                    ListHeaderView(list: $list)
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 15, bottom: 8, trailing: 15))
             }
-            // Optional: Add .onDelete and .onMove modifiers here if list/task reordering is desired within this view
         }
         .listStyle(.plain)
-         // Initialize expanded IDs when taskLists are loaded or change
-         .onAppear { initializeExpandedIDs() }
-         .onChange(of: taskLists) { initializeExpandedIDs() } 
+        .onAppear { initializeExpandedIDs() }
+        .onChange(of: taskLists) { initializeExpandedIDs() } 
+    }
+
+    /// A view for the editable list header
+    private struct ListHeaderView: View {
+        @Binding var list: TaskList
+        @State private var isEditing = false
+        @State private var editedName: String = ""
+        
+        var body: some View {
+            HStack {
+                if isEditing {
+                    TextField("List name", text: $editedName, onCommit: {
+                        if !editedName.isEmpty {
+                            list.name = editedName
+                        }
+                        isEditing = false
+                    })
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .submitLabel(.done)
+                    // Prevent the disclosure group from collapsing when tapping the TextField
+                    .contentShape(Rectangle())
+                    .onTapGesture { }
+                } else {
+                    Text(list.name)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                        // Allow tapping just the text to edit
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            editedName = list.name
+                            isEditing = true
+                        }
+                }
+            }
+            // Add some padding to make it easier to tap the text vs the disclosure arrow
+            .padding(.leading, 4)
+        }
     }
 
     /// A row representing a single Task in the list.
-    private func taskRow(for task: Task, in list: TaskList) -> some View {
-         HStack {
-            Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(task.isCompleted ? .green : .gray)
+    private func taskRow(for task: Binding<Task>, in list: TaskList) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: task.wrappedValue.isCompleted ? "checkmark.circle.fill" : "circle")
+                .foregroundColor(task.wrappedValue.isCompleted ? themeManager.themeColor : .gray)
+                .font(.system(size: 20))
+                .contentShape(Rectangle())
                 .onTapGesture {
-                     toggleTaskCompletion(taskID: task.id, listID: list.id)
-                 }
-            Text(task.name)
+                    toggleTaskCompletion(taskID: task.wrappedValue.id, listID: list.id)
+                }
+                .padding(.leading, -8)
+            
+            // Make task name editable on tap
+            if task.wrappedValue.isEditing {
+                TextField("Task name", text: task.name, onCommit: {
+                    task.isEditing.wrappedValue = false
+                })
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .submitLabel(.done)
+            } else {
+                Text(task.wrappedValue.name)
+                    .onTapGesture {
+                        task.isEditing.wrappedValue = true
+                    }
+            }
+            
             Spacer()
+            
             // Display Priority Bubble (if set)
-            if let priority = task.priority {
+            if let priority = task.wrappedValue.priority {
                 Text(priority.rawValue.uppercased())
                     .font(.caption.weight(.bold))
                     .padding(.horizontal, 6)
@@ -138,8 +187,9 @@ struct TasksView: View {
                     .background(color(for: priority))
                     .cornerRadius(6)
             }
+            
             // Display Due Date
-            if let dueDate = task.dueDate {
+            if let dueDate = task.wrappedValue.dueDate {
                 Text(format(date: dueDate))
                     .font(.caption)
                     .foregroundColor(.gray)
@@ -148,9 +198,10 @@ struct TasksView: View {
                     .background(Color.gray.opacity(0.2))
                     .cornerRadius(8)
             }
-            // Context Menu Button - Sets state in ContentView via binding
+            
+            // Context Menu Button
             Button {
-                contextMenuTask = task
+                contextMenuTask = task.wrappedValue
                 contextMenuTaskListID = list.id
                 showingContextMenu = true
             } label: {
@@ -160,9 +211,44 @@ struct TasksView: View {
             }
             .buttonStyle(.borderless)
         }
+        .padding(.leading, -4) // Move entire row closer to left edge
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            // Priority Button
+            Button {
+                contextMenuTask = task.wrappedValue
+                contextMenuTaskListID = list.id
+                showingContextMenu = false
+                showingPriorityPicker = true
+            } label: {
+                Label("Priority", systemImage: "flag.fill")
+            }
+            .tint(.orange)
+            
+            // Date Button
+            Button {
+                contextMenuTask = task.wrappedValue
+                contextMenuTaskListID = list.id
+                showingContextMenu = false
+                showingContextMenuDatePicker = true
+            } label: {
+                Label("Date", systemImage: "calendar")
+            }
+            .tint(.blue)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            // Delete Button
+            Button(role: .destructive) {
+                if let listIndex = taskLists.firstIndex(where: { $0.id == list.id }),
+                   let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == task.wrappedValue.id }) {
+                    taskLists[listIndex].tasks.remove(at: taskIndex)
+                }
+            } label: {
+                Label("Delete", systemImage: "trash.fill")
+            }
+        }
     }
 
-    /// Floating Action Button for adding a new task - Toggles state in ContentView
+    /// Floating Action Button for adding a new task
     private var floatingAddButton: some View {
         Button {
             withAnimation {
@@ -173,7 +259,7 @@ struct TasksView: View {
                 .font(.title2)
                 .foregroundColor(.white)
                 .frame(width: 60, height: 60)
-                .background(Circle().fill(Color.purple))
+                .background(Circle().fill(themeManager.themeColor))
                 .shadow(radius: 4)
         }
     }
@@ -271,6 +357,8 @@ struct TasksView: View {
         @State var contextMenuTask: Task? = nil
         @State var contextMenuTaskListID: UUID? = nil
         @State var showingContextMenu = false
+        @State var showingPriorityPicker = false
+        @State var showingContextMenuDatePicker = false
 
         var body: some View {
             TasksView(
@@ -279,7 +367,9 @@ struct TasksView: View {
                 isAddTaskExpanded: $isAddTaskExpanded,
                 contextMenuTask: $contextMenuTask,
                 contextMenuTaskListID: $contextMenuTaskListID,
-                showingContextMenu: $showingContextMenu
+                showingContextMenu: $showingContextMenu,
+                showingPriorityPicker: $showingPriorityPicker,
+                showingContextMenuDatePicker: $showingContextMenuDatePicker
             )
         }
     }

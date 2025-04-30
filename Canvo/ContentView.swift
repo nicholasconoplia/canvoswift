@@ -42,47 +42,76 @@ struct ContentView: View {
     // MARK: - Environment
     
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
 
     // --- Body ---
     var body: some View {
-        ZStack { // Use ZStack for layering overlays
+        TabView(selection: $selectedTab) {
             NavigationView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // Title Header
-                    titleHeaderView
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                    
-                    // Custom Tab Selector and Indicator
-                    tabSelectorView
-                    tabIndicatorView
-                    
-                    // Show the appropriate view based on selected tab
+                VStack(spacing: 0) {
+                    // Tasks Content
                     if selectedTab == 0 {
                         // Tasks Content
                         TasksView(
                             showingSettings: $showingSettings,
-                            taskLists: $taskLists, // Pass binding
-                            isAddTaskExpanded: $isAddTaskExpanded, // Pass binding
-                            contextMenuTask: $contextMenuTask, // Pass binding
-                            contextMenuTaskListID: $contextMenuTaskListID, // Pass binding
-                            showingContextMenu: $showingContextMenu // Pass binding
+                            taskLists: $taskLists,
+                            isAddTaskExpanded: $isAddTaskExpanded,
+                            contextMenuTask: $contextMenuTask,
+                            contextMenuTaskListID: $contextMenuTaskListID,
+                            showingContextMenu: $showingContextMenu,
+                            showingPriorityPicker: $showingPriorityPicker,
+                            showingContextMenuDatePicker: $showingContextMenuDatePicker
                         )
                     } else {
                         // Canvas Content
-                        canvasTabContent
+                        CanvasIntegrationView()
                     }
                 }
-                .navigationTitle("")
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationTitle("Canvo")
+                .navigationBarTitleDisplayMode(.large)
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) { 
-                        settingsToolbarButton 
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            showingSettings = true
+                        } label: {
+                            Image(systemName: "gear")
+                                .foregroundColor(themeManager.themeColor)
+                        }
                     }
                 }
             }
+            .tabItem {
+                Label("Tasks", systemImage: "checklist")
+            }
+            .tag(0)
+            
+            NavigationView {
+                VStack(spacing: 0) {
+                    if selectedTab == 1 {
+                        CanvasIntegrationView()
+                    }
+                }
+                .navigationTitle("Canvas")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) { 
+                        Button {
+                            showingSettings = true
+                        } label: {
+                            Image(systemName: "gear")
+                                .foregroundColor(themeManager.themeColor)
+                        }
+                    }
+                }
+            }
+            .tabItem {
+                Label("Canvas", systemImage: "square.and.pencil")
+            }
+            .tag(1)
+        }
+        .tint(themeManager.themeColor) // Set tab bar and navigation tint
             .sheet(isPresented: $showingSettings) {
-                SettingsView() // Present the Settings modal
+            SettingsView()
             }
             // Add Task Date Picker Sheet
              .sheet(isPresented: $showingDatePicker) {
@@ -163,19 +192,6 @@ struct ContentView: View {
                     .transition(.scale.combined(with: .opacity))
                     .zIndex(2) // Ensure overlay is above dimming
             }
-        }
-        .animation(.none, value: selectedTab) // Disable animation for tab changes
-        // Save data whenever taskLists changes
-        .onChange(of: taskLists) {
-            DataManager.save(lists: taskLists)
-        }
-        // Apply animations to overlays (can refine these)
-        .animation(.easeInOut, value: showingContextMenu)
-        .animation(.easeInOut, value: showingNotesEditor)
-        .animation(.easeInOut, value: showingPriorityPicker)
-        .animation(.spring(), value: isAddTaskExpanded)
-         .onAppear(perform: setupView) // Keep setup/cleanup if needed at this level
-         .onDisappear(perform: cleanupView)
     }
 
     // MARK: - Setup and Cleanup
@@ -532,16 +548,6 @@ struct ContentView: View {
                     }
                 }
             }
-        }
-    }
-
-    // MARK: - Toolbar Content
-
-    private var settingsToolbarButton: some View {
-        Button {
-            showingSettings = true
-        } label: {
-            Image(systemName: "gear")
         }
     }
 

@@ -39,7 +39,9 @@ class SubmissionStatusService {
     ///   - assignmentID: Canvas assignment ID
     /// - Returns: Optional Submission object with status information
     func fetchSubmissionData(courseID: String, assignmentID: String) async -> Submission? {
+        print("[DEBUG SubmissionService] Fetching submission for Course: \(courseID), Assignment: \(assignmentID)")
         guard let url = URL(string: "\(apiURL)/api/v1/courses/\(courseID)/assignments/\(assignmentID)/submissions/self") else {
+            print("[DEBUG SubmissionService] Invalid URL generated for Assignment: \(assignmentID)")
             return nil
         }
         
@@ -48,13 +50,24 @@ class SubmissionStatusService {
         
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
+
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("[DEBUG SubmissionService] Raw JSON response for Assignment \(assignmentID): \(jsonString.prefix(500))...") // Print first 500 chars
+            }
+
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                print("[DEBUG SubmissionService] HTTP Error: \(String(describing: (response as? HTTPURLResponse)?.statusCode)) for Assignment: \(assignmentID)")
+                if let errorData = String(data: data, encoding: .utf8) {
+                    print("[DEBUG SubmissionService] Error Response Body: \(errorData)")
+                }
                 return nil
             }
             
-            return try JSONDecoder().decode(Submission.self, from: data)
+            let decodedSubmission = try JSONDecoder().decode(Submission.self, from: data)
+            print("[DEBUG SubmissionService] Decoded Submission for \(assignmentID): \(decodedSubmission)")
+            return decodedSubmission
         } catch {
-            print("Error fetching submission: \(error)")
+            print("[DEBUG SubmissionService] Error fetching/decoding submission for \(assignmentID): \(error)")
             return nil
         }
     }
@@ -63,7 +76,9 @@ class SubmissionStatusService {
     /// - Parameter submission: The Submission object from the Canvas API
     /// - Returns: Boolean indicating if the assignment has been submitted
     func isAssignmentSubmitted(_ submission: Submission?) -> Bool {
+        print("[DEBUG SubmissionService] Checking submission status input: \(String(describing: submission))")
         guard let submission = submission else {
+            print("[DEBUG SubmissionService] Submission is nil, determined as not submitted.")
             return false
         }
         
@@ -71,9 +86,16 @@ class SubmissionStatusService {
         // 1. workflowState is "submitted" OR
         // 2. workflowState is "graded" OR
         // 3. Has a submittedAt timestamp AND attempt > 0
-        return submission.workflowState == "submitted" || 
-               submission.workflowState == "graded" || 
-               (submission.submittedAt != nil && (submission.attempt ?? 0) > 0)
+        let workflowState = submission.workflowState
+        let submittedAt = submission.submittedAt
+        let attempt = submission.attempt ?? 0
+        
+        let isSubmitted = workflowState == "submitted" || 
+               workflowState == "graded" || 
+               (submittedAt != nil && attempt > 0)
+
+        print("[DEBUG SubmissionService] Values - workflowState: '\(String(describing: workflowState))', submittedAt: '\(String(describing: submittedAt))', attempt: \(attempt). Result: \(isSubmitted)")
+        return isSubmitted
     }
 }
 
@@ -153,6 +175,7 @@ let UNIVERSITIES: [University] = [
 struct CanvasIntegrationView: View {
     // Use StateObject for the ViewModel to persist between view lifecycles
     @StateObject private var viewModel = CanvasIntegrationViewModel()
+    @EnvironmentObject private var themeManager: ThemeManager
     
     // UI state
     @State private var showingApiGuide: Bool = false
@@ -162,7 +185,6 @@ struct CanvasIntegrationView: View {
     
     // Theme properties
     var isDarkMode: Bool = false
-    let themeColor = Color.purple
 
     var body: some View {
         VStack(spacing: 0) {
@@ -171,7 +193,7 @@ struct CanvasIntegrationView: View {
                 .font(.headline)
                 .padding()
                 .frame(maxWidth: .infinity)
-                .background(themeColor)
+                .background(themeManager.themeColor)
                 .foregroundColor(.white)
             // Canvas tab shell: just university picker, API key, and placeholder
             apiSetupView
@@ -258,7 +280,7 @@ struct CanvasIntegrationView: View {
                         showingApiGuide = true
                     }
                     .font(.footnote)
-                    .foregroundColor(themeColor)
+                    .foregroundColor(themeManager.themeColor)
                     .padding(.top, 2)
                     
                     Button(action: {
@@ -276,7 +298,7 @@ struct CanvasIntegrationView: View {
                     }
                     .padding(.vertical, 10)
                     .padding(.horizontal, 8)
-                    .background(themeColor)
+                    .background(themeManager.themeColor)
                     .foregroundColor(.white)
                     .cornerRadius(8)
                     .disabled(viewModel.apiKey.isEmpty || viewModel.effectiveCanvasURL.isEmpty || viewModel.isLoading)
@@ -286,7 +308,7 @@ struct CanvasIntegrationView: View {
                 HStack {
                     Text("Canvas Integration Connected")
                         .font(.subheadline)
-                        .foregroundColor(.purple)
+                        .foregroundColor(themeManager.themeColor)
                         .fontWeight(.semibold)
                     Spacer()
                     Button(action: {
@@ -316,7 +338,7 @@ struct CanvasIntegrationView: View {
                         Text("Customize Visible Courses")
                     }
                     .font(.subheadline)
-                    .foregroundColor(themeColor)
+                    .foregroundColor(themeManager.themeColor)
                     .padding(.bottom, 12)
                 }
                 
@@ -329,6 +351,19 @@ struct CanvasIntegrationView: View {
                         // We don't need to re-fetch data, just force a UI refresh
                         viewModel.objectWillChange.send()
                     }
+                
+                // Refresh button
+                Button(action: {
+                    viewModel.fetchCanvasData()
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Refresh Data")
+                    }
+                    .foregroundColor(themeManager.themeColor)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 12)
                 
                 // Top filter pills
                 HStack(spacing: 16) {
@@ -394,7 +429,7 @@ struct CanvasIntegrationView: View {
                 // Show only current courses toggle (moved to settings)
                 if viewModel.isLoading {
                     ProgressView("Loading your Canvas data...")
-                        .progressViewStyle(CircularProgressViewStyle(tint: themeColor))
+                        .progressViewStyle(CircularProgressViewStyle(tint: themeManager.themeColor))
                         .padding()
                 } else if viewModel.filteredCourses.isEmpty {
                     Text(viewModel.hasConfiguredVisibleCourses ? 
@@ -421,18 +456,7 @@ struct CanvasIntegrationView: View {
                     }
                 }
                 
-                // Refresh button at bottom
-                Button(action: {
-                    viewModel.fetchCanvasData()
-                }) {
-                    HStack {
-                        Image(systemName: "arrow.clockwise")
-                        Text("Refresh Data")
-                    }
-                    .foregroundColor(themeColor)
-                    .padding(.vertical, 10)
-                }
-                .disabled(viewModel.isLoading)
+
             }
 
             // Display error message
@@ -480,7 +504,7 @@ struct CanvasIntegrationView: View {
                         Button(action: { showingApiGuide = false }) {
                             Image(systemName: "xmark")
                                 .font(.title2)
-                                .foregroundColor(themeColor)
+                                .foregroundColor(themeManager.themeColor)
                                 .padding(8)
                         }
                         .accessibilityLabel("Close")
@@ -508,7 +532,7 @@ struct CanvasIntegrationView: View {
                                     .foregroundColor(.white)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 16)
-                                    .background(themeColor)
+                                    .background(themeManager.themeColor)
                                     .cornerRadius(8)
                             }
                         }
@@ -569,7 +593,7 @@ struct CanvasIntegrationView: View {
     private func stepNumberCircle(_ number: Int) -> some View {
         ZStack {
             Circle()
-                .fill(themeColor)
+                .fill(themeManager.themeColor)
                 .frame(width: 32, height: 32)
             Text("\(number)")
                 .font(.headline)
@@ -592,10 +616,10 @@ struct CanvasIntegrationView: View {
                             Spacer()
                             if university.id == viewModel.selectedUniversity.id && !viewModel.isCustomUniversitySelected {
                                 Image(systemName: "checkmark")
-                                    .foregroundColor(themeColor)
+                                    .foregroundColor(themeManager.themeColor)
                             } else if university.url.isEmpty && viewModel.isCustomUniversitySelected {
                                 Image(systemName: "checkmark")
-                                    .foregroundColor(themeColor)
+                                    .foregroundColor(themeManager.themeColor)
                             }
                         }
                     }
@@ -614,7 +638,7 @@ struct CanvasIntegrationView: View {
 // MARK: - Course Selection Modal View
 struct CourseSelectionModalView: View {
     @ObservedObject var viewModel: CanvasIntegrationViewModel
-    let themeColor = Color.purple
+    @EnvironmentObject private var themeManager: ThemeManager
     
     var body: some View {
         NavigationView {
@@ -657,7 +681,7 @@ struct CourseSelectionModalView: View {
                             // Checkbox
                             Image(systemName: viewModel.temporaryVisibleCourseIds.contains(course.id) ? "checkmark.circle.fill" : "circle")
                                 .font(.title2)
-                                .foregroundColor(viewModel.temporaryVisibleCourseIds.contains(course.id) ? themeColor : .gray)
+                                .foregroundColor(viewModel.temporaryVisibleCourseIds.contains(course.id) ? themeManager.themeColor : .gray)
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -733,7 +757,7 @@ struct CourseSelectionModalView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .padding(.vertical, 14)
-                        .background(themeColor)
+                        .background(themeManager.themeColor)
                         .foregroundColor(.white)
                         .cornerRadius(8)
                     }
@@ -759,9 +783,7 @@ struct CourseCardView: View {
     let assignments: [CanvasKitAssignment]
     let isLoading: Bool
     @ObservedObject var viewModel: CanvasIntegrationViewModel
-    
-    private let themeColor = Color(hex: "b892ff") // Purple color from the image
-    private let lightThemeColor = Color(hex: "e0cfff") // Lighter purple for backgrounds
+    @EnvironmentObject private var themeManager: ThemeManager
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -772,7 +794,7 @@ struct CourseCardView: View {
                 .padding(.vertical, 12)
                 .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(themeColor)
+                .background(themeManager.themeColor)
                 .cornerRadius(16)
             
             // Assignments
@@ -780,7 +802,7 @@ struct CourseCardView: View {
                 HStack {
                     Spacer()
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: themeColor))
+                        .progressViewStyle(CircularProgressViewStyle(tint: themeManager.themeColor))
                     Spacer()
                 }
                 .padding(.vertical, 12)
@@ -806,15 +828,16 @@ struct CourseCardView: View {
 // MARK: - Assignment Card View
 struct AssignmentCardView: View {
     let assignment: CanvasKitAssignment
-    
-    private let themeColor = Color(hex: "b892ff") // Purple color
-    private let lightThemeColor = Color(hex: "e0cfff") // Lighter purple
+    @EnvironmentObject private var themeManager: ThemeManager
     
     @State private var showingListPicker = false
     @State private var showingAlert = false
     @State private var alertMessage = ""
     
     var body: some View {
+        // DEBUG: Print submission status when view is rendered
+        let _ = print("[DEBUG AssignmentCardView] Rendering card for '\(assignment.name)' (ID: \(assignment.id)) with status: \(assignment.submissionStatus)")
+        
         VStack(alignment: .leading, spacing: 12) {
             // Assignment name (without the submission status badge overlay)
             Text(assignment.name)
@@ -830,7 +853,7 @@ struct AssignmentCardView: View {
                     .foregroundColor(.white)
                     .padding(.vertical, 4)
                     .padding(.horizontal, 12)
-                    .background(themeColor)
+                    .background(themeManager.themeColor)
                     .cornerRadius(16)
                 
                 Spacer()
@@ -845,7 +868,7 @@ struct AssignmentCardView: View {
                         .foregroundColor(.white)
                         .cornerRadius(4)
                 } else {
-                    Text("Pending")
+                    Text("Not Submitted")
                         .font(.caption)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -872,7 +895,7 @@ struct AssignmentCardView: View {
                         .foregroundColor(.white)
                         .padding(.vertical, 4)
                         .padding(.horizontal, 12)
-                        .background(themeColor)
+                        .background(themeManager.themeColor)
                         .cornerRadius(16)
                 } else if let daysFromNow = assignment.daysFromNow {
                     if daysFromNow > 0 {
@@ -882,7 +905,7 @@ struct AssignmentCardView: View {
                             .foregroundColor(.white)
                             .padding(.vertical, 4)
                             .padding(.horizontal, 12)
-                            .background(Color.blue)
+                            .background(themeManager.themeColor)
                             .cornerRadius(16)
                     } else if daysFromNow < 0 {
                         Text("\(abs(daysFromNow)) \(abs(daysFromNow) == 1 ? "day" : "days") ago")
@@ -907,10 +930,10 @@ struct AssignmentCardView: View {
                     Text("VIEW IN CANVAS")
                         .font(.caption)
                         .fontWeight(.bold)
-                        .foregroundColor(themeColor)
+                        .foregroundColor(themeManager.themeColor)
                         .padding(.vertical, 12)
                         .frame(maxWidth: .infinity)
-                        .background(lightThemeColor)
+                        .background(themeManager.themeColor.opacity(0.1))
                         .cornerRadius(24)
                 }
                 
@@ -929,7 +952,7 @@ struct AssignmentCardView: View {
                         .foregroundColor(.white)
                         .padding(.vertical, 12)
                         .frame(maxWidth: .infinity)
-                        .background(themeColor)
+                        .background(themeManager.themeColor)
                         .cornerRadius(24)
                 }
             }
