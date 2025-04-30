@@ -10,6 +10,113 @@ import Alamofire
 import UIKit
 import Foundation
 
+// MARK: - Submission Models
+struct Submission: Decodable {
+    let workflowState: String?
+    let submittedAt: String?
+    let attempt: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case workflowState = "workflow_state"
+        case submittedAt = "submitted_at"
+        case attempt
+    }
+}
+
+// MARK: - Submission Status Logic
+class SubmissionStatusService {
+    private let apiURL: String
+    private let apiKey: String
+    
+    init(apiURL: String, apiKey: String) {
+        self.apiURL = apiURL
+        self.apiKey = apiKey
+    }
+    
+    /// Fetches submission data for a specific assignment
+    /// - Parameters:
+    ///   - courseID: Canvas course ID
+    ///   - assignmentID: Canvas assignment ID
+    /// - Returns: Optional Submission object with status information
+    func fetchSubmissionData(courseID: String, assignmentID: String) async -> Submission? {
+        guard let url = URL(string: "\(apiURL)/api/v1/courses/\(courseID)/assignments/\(assignmentID)/submissions/self") else {
+            return nil
+        }
+        
+        var request = URLRequest(url: url)
+        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                return nil
+            }
+            
+            return try JSONDecoder().decode(Submission.self, from: data)
+        } catch {
+            print("Error fetching submission: \(error)")
+            return nil
+        }
+    }
+    
+    /// Determines if an assignment has been submitted based on Canvas API data
+    /// - Parameter submission: The Submission object from the Canvas API
+    /// - Returns: Boolean indicating if the assignment has been submitted
+    func isAssignmentSubmitted(_ submission: Submission?) -> Bool {
+        guard let submission = submission else {
+            return false
+        }
+        
+        // Check submission status using the same logic as the JavaScript version:
+        // 1. workflowState is "submitted" OR
+        // 2. workflowState is "graded" OR
+        // 3. Has a submittedAt timestamp AND attempt > 0
+        return submission.workflowState == "submitted" || 
+               submission.workflowState == "graded" || 
+               (submission.submittedAt != nil && (submission.attempt ?? 0) > 0)
+    }
+}
+
+// MARK: - SwiftUI View Extension for Submission Status
+extension View {
+    /// Adds a submission status badge to a view
+    /// - Parameter isSubmitted: Boolean indicating if assignment is submitted
+    /// - Returns: A view with the submission status badge
+    func submissionStatusBadge(isSubmitted: Bool) -> some View {
+        self.overlay(
+            VStack {
+                HStack {
+                    Spacer()
+                    
+                    // Submission status badge
+                    if isSubmitted {
+                        Label("Submitted", systemImage: "checkmark")
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(4)
+                    } else {
+                        Text("Pending")
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color(UIColor.systemGray5))
+                            .foregroundColor(Color(UIColor.systemGray))
+                            .cornerRadius(4)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(Color(UIColor.systemGray4), lineWidth: 1)
+                            )
+                    }
+                }
+                .padding(8)
+            }
+        )
+    }
+}
+
 // MARK: - University Model
 struct University: Identifiable, Hashable {
     let id = UUID()
@@ -709,10 +816,11 @@ struct AssignmentCardView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Assignment name
+            // Assignment name with submission status badge overlay
             Text(assignment.name)
                 .font(.headline)
                 .foregroundColor(.primary)
+                .submissionStatusBadge(isSubmitted: assignment.submissionStatus.0 == "Submitted")
             
             // Tags row
             HStack(spacing: 12) {
@@ -724,17 +832,6 @@ struct AssignmentCardView: View {
                     .padding(.vertical, 4)
                     .padding(.horizontal, 12)
                     .background(themeColor)
-                    .cornerRadius(16)
-                
-                // Submission status tag
-                let status = assignment.submissionStatus
-                Text(status.0)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(status.0 == "Submitted" ? .white : .white)
-                    .padding(.vertical, 4)
-                    .padding(.horizontal, 12)
-                    .background(status.0 == "Submitted" ? Color.green : themeColor)
                     .cornerRadius(16)
             }
             

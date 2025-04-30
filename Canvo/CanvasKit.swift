@@ -80,61 +80,16 @@ struct CanvasKitCourse: Codable, Identifiable {
     }
 }
 
-// Assignment submission model
-struct AssignmentSubmission: Decodable {
-    let id: Int?
-    let workflowState: String?
-    let submittedAt: String?
-    let attempt: Int?
-    
-    enum CodingKeys: String, CodingKey {
-        case id
-        case workflowState = "workflow_state"
-        case submittedAt = "submitted_at"
-        case attempt
-    }
-    
-    var isSubmitted: Bool {
-        return workflowState == "submitted" || 
-               workflowState == "graded"
-    }
-}
-
-// Quiz submission models
-struct QuizSubmissionResponse: Decodable {
-    let quizSubmissions: [QuizSubmission]
-    
-    enum CodingKeys: String, CodingKey {
-        case quizSubmissions = "quiz_submissions"
-    }
-}
-
-struct QuizSubmission: Decodable {
-    let id: Int
-    let workflowState: String
-    let attempt: Int
-    let finishedAt: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case workflowState = "workflow_state"
-        case attempt
-        case finishedAt = "finished_at"
-    }
-    
-    var isSubmitted: Bool {
-        return workflowState == "complete"
-    }
-}
-
 struct CanvasKitAssignment: Codable, Identifiable {
     let id: Int
     let name: String
     let due_at: String?
     let submission_types: [String]?
-    let has_submitted_submissions: Bool?
     let html_url: String?
     let quiz_id: Int?
+    
+    // Submission status information (status, detailed status)
+    var submissionStatus: (String, String) = ("Not Submitted", "Not yet submitted")
     
     // Coding keys to ensure proper encoding/decoding of all properties
     enum CodingKeys: String, CodingKey {
@@ -142,7 +97,6 @@ struct CanvasKitAssignment: Codable, Identifiable {
         case name
         case due_at
         case submission_types
-        case has_submitted_submissions
         case html_url
         case quiz_id
     }
@@ -199,15 +153,6 @@ struct CanvasKitAssignment: Codable, Identifiable {
             }
         }
         return "Assignment"
-    }
-    
-    var submissionStatus: (String, Color) {
-        // Simple approach using only has_submitted_submissions
-        if let submitted = has_submitted_submissions {
-            return submitted ? ("Submitted", Color.green) : ("NOT SUBMITTED", Color(hex: "b892ff"))
-        }
-        
-        return ("Unknown", Color.gray)
     }
     
     var isQuiz: Bool {
@@ -351,9 +296,28 @@ class CanvasKit {
                 case .success(let data):
                     do {
                         // First try to directly decode as an array of assignments
-                        let assignments = try JSONDecoder().decode([CanvasKitAssignment].self, from: data)
+                        var assignments = try JSONDecoder().decode([CanvasKitAssignment].self, from: data)
                         print("DEBUG: Successfully decoded \(assignments.count) assignments directly")
-                        completion(.success(assignments))
+                        
+                        // Fetch submission status for each assignment
+                        let dispatchGroup = DispatchGroup()
+                        
+                        for i in 0..<assignments.count {
+                            dispatchGroup.enter()
+                            self.fetchSubmissionStatus(forCourseId: courseId, assignmentId: assignments[i].id) { result in
+                                switch result {
+                                case .success(let status):
+                                    assignments[i].submissionStatus = status
+                                case .failure(let error):
+                                    print("DEBUG: Failed to fetch submission status: \(error.localizedDescription)")
+                                }
+                                dispatchGroup.leave()
+                            }
+                        }
+                        
+                        dispatchGroup.notify(queue: .main) { [weak self, completion] in
+                            completion(.success(assignments))
+                        }
                     } catch let directError {
                         print("DEBUG: Failed to decode assignments directly: \(directError)")
                         
@@ -371,7 +335,7 @@ class CanvasKit {
                                     do {
                                         // Convert item back to data
                                         let itemData = try JSONSerialization.data(withJSONObject: item)
-                                        let assignment = try decoder.decode(CanvasKitAssignment.self, from: itemData)
+                                        var assignment = try decoder.decode(CanvasKitAssignment.self, from: itemData)
                                         assignmentsArray.append(assignment)
                                     } catch let itemError {
                                         print("DEBUG: Skipping assignment \(index) due to error: \(itemError)")
@@ -381,7 +345,26 @@ class CanvasKit {
                                 
                                 if !assignmentsArray.isEmpty {
                                     print("DEBUG: Successfully decoded \(assignmentsArray.count) assignments from manual parsing")
-                                    completion(.success(assignmentsArray))
+                                    
+                                    // Fetch submission status for each assignment
+                                    let dispatchGroup = DispatchGroup()
+                                    
+                                    for i in 0..<assignmentsArray.count {
+                                        dispatchGroup.enter()
+                                        self.fetchSubmissionStatus(forCourseId: courseId, assignmentId: assignmentsArray[i].id) { result in
+                                            switch result {
+                                            case .success(let status):
+                                                assignmentsArray[i].submissionStatus = status
+                                            case .failure(let error):
+                                                print("DEBUG: Failed to fetch submission status: \(error.localizedDescription)")
+                                            }
+                                            dispatchGroup.leave()
+                                        }
+                                    }
+                                    
+                                    dispatchGroup.notify(queue: .main) { [weak self, completion] in
+                                        completion(.success(assignmentsArray))
+                                    }
                                     return
                                 }
                             } else if let jsonDict = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -389,9 +372,28 @@ class CanvasKit {
                                 // Try to handle wrapped response
                                 print("DEBUG: Found assignments array in wrapped response")
                                 let assignmentsData = try JSONSerialization.data(withJSONObject: assignmentsArray)
-                                let assignments = try JSONDecoder().decode([CanvasKitAssignment].self, from: assignmentsData)
+                                var assignments = try JSONDecoder().decode([CanvasKitAssignment].self, from: assignmentsData)
                                 print("DEBUG: Successfully decoded \(assignments.count) assignments from wrapped response")
-                                completion(.success(assignments))
+                                
+                                // Fetch submission status for each assignment
+                                let dispatchGroup = DispatchGroup()
+                                
+                                for i in 0..<assignments.count {
+                                    dispatchGroup.enter()
+                                    self.fetchSubmissionStatus(forCourseId: courseId, assignmentId: assignments[i].id) { result in
+                                        switch result {
+                                        case .success(let status):
+                                            assignments[i].submissionStatus = status
+                                        case .failure(let error):
+                                            print("DEBUG: Failed to fetch submission status: \(error.localizedDescription)")
+                                        }
+                                        dispatchGroup.leave()
+                                    }
+                                }
+                                
+                                dispatchGroup.notify(queue: .main) { [weak self, completion] in
+                                    completion(.success(assignments))
+                                }
                                 return
                             }
                         } catch let jsonError {
@@ -403,6 +405,59 @@ class CanvasKit {
                     }
                 case .failure(let error):
                     print("DEBUG: Assignment request failed with error: \(error)")
+                    completion(.failure(error))
+                }
+            }
+    }
+    
+    /// Fetch submission status for a specific assignment
+    func fetchSubmissionStatus(forCourseId courseId: Int, assignmentId: Int, completion: @escaping (Result<(String, String), Error>) -> Void) {
+        let urlString = "\(baseURL)/api/v1/courses/\(courseId)/assignments/\(assignmentId)/submissions/self"
+        
+        print("DEBUG: Fetching submission status from: \(urlString)")
+        
+        AF.request(urlString, headers: headers)
+            .validate()
+            .responseData { response in
+                print("DEBUG: Submission status response code: \(response.response?.statusCode ?? 0)")
+                
+                switch response.result {
+                case .success(let data):
+                    do {
+                        // Define a local Submission struct for decoding
+                        struct Submission: Decodable {
+                            let workflowState: String?
+                            let submittedAt: String?
+                            let attempt: Int?
+                            
+                            enum CodingKeys: String, CodingKey {
+                                case workflowState = "workflow_state"
+                                case submittedAt = "submitted_at"
+                                case attempt
+                            }
+                        }
+                        
+                        // Try to decode as Submission model
+                        let decoder = JSONDecoder()
+                        
+                        let submission = try decoder.decode(Submission.self, from: data)
+                        
+                        // Determine submission status
+                        let isSubmitted = submission.workflowState == "submitted" || 
+                                         submission.workflowState == "graded" || 
+                                         (submission.submittedAt != nil && (submission.attempt ?? 0) > 0)
+                        
+                        if isSubmitted {
+                            completion(.success(("Submitted", "Assignment has been submitted")))
+                        } else {
+                            completion(.success(("Not Submitted", "Assignment has not been submitted yet")))
+                        }
+                    } catch {
+                        print("DEBUG: Error decoding submission: \(error)")
+                        completion(.success(("Not Submitted", "Status information unavailable")))
+                    }
+                case .failure(let error):
+                    print("DEBUG: Submission status request failed: \(error)")
                     completion(.failure(error))
                 }
             }
@@ -453,136 +508,6 @@ class CanvasKit {
                     completion(false, message)
                 }
             }
-    }
-    
-    /// Fetch assignment submission status
-    func fetchAssignmentSubmission(courseId: Int, assignmentId: Int, completion: @escaping (Result<AssignmentSubmission?, Error>) -> Void) {
-        let urlString = "\(baseURL)/api/v1/courses/\(courseId)/assignments/\(assignmentId)/submissions/self"
-        
-        print("DEBUG: Fetching assignment submission from: \(urlString)")
-        
-        AF.request(urlString, headers: headers)
-            .responseData { response in
-                switch response.result {
-                case .success(let data):
-                    if data.isEmpty {
-                        completion(.success(nil)) // No submission
-                        return
-                    }
-                    
-                    do {
-                        let submission = try JSONDecoder().decode(AssignmentSubmission.self, from: data)
-                        
-                        // Check submission status based on workflow_state
-                        if submission.workflowState == "submitted" || submission.workflowState == "graded" {
-                            print("✅ Assignment has been submitted.")
-                        } else {
-                            print("❌ Assignment not submitted yet. Status: \(submission.workflowState ?? "unknown")")
-                        }
-                        
-                        completion(.success(submission))
-                    } catch {
-                        print("DEBUG: Error decoding assignment submission: \(error)")
-                        completion(.failure(error))
-                    }
-                    
-                case .failure(let error):
-                    // If 404, it means no submission
-                    if let statusCode = response.response?.statusCode, statusCode == 404 {
-                        print("❌ No submission found for this assignment.")
-                        completion(.success(nil))
-                    } else {
-                        completion(.failure(error))
-                    }
-                }
-            }
-    }
-    
-    /// Fetch quiz submission status
-    func fetchQuizSubmission(courseId: Int, quizId: Int, completion: @escaping (Result<QuizSubmissionResponse?, Error>) -> Void) {
-        let urlString = "\(baseURL)/api/v1/courses/\(courseId)/quizzes/\(quizId)/submission"
-        
-        print("DEBUG: Fetching quiz submission from: \(urlString)")
-        
-        AF.request(urlString, headers: headers)
-            .responseData { response in
-                switch response.result {
-                case .success(let data):
-                    if data.isEmpty {
-                        print("❌ No quiz submission data found.")
-                        completion(.success(nil)) // No submission
-                        return
-                    }
-                    
-                    do {
-                        let quizResponse = try JSONDecoder().decode(QuizSubmissionResponse.self, from: data)
-                        
-                        // Use the exact check from the user's code
-                        if let quiz = quizResponse.quizSubmissions.first {
-                            if quiz.workflowState == "complete" {
-                                print("✅ Quiz is submitted.")
-                            } else {
-                                print("❌ Quiz is not submitted yet. Status: \(quiz.workflowState)")
-                            }
-                        }
-                        
-                        completion(.success(quizResponse))
-                    } catch {
-                        print("DEBUG: Error decoding quiz submission: \(error)")
-                        completion(.failure(error))
-                    }
-                    
-                case .failure(let error):
-                    // If 404, it means no submission
-                    if let statusCode = response.response?.statusCode, statusCode == 404 {
-                        print("❌ No quiz submission found.")
-                        completion(.success(nil))
-                    } else {
-                        completion(.failure(error))
-                    }
-                }
-            }
-    }
-    
-    /// Checks the submission status for an assignment or quiz
-    func checkSubmissionStatus(courseId: Int, assignment: CanvasKitAssignment, completion: @escaping (Bool, String) -> Void) {
-        if assignment.isQuiz, let quizId = assignment.quiz_id {
-            // Handle quiz submission
-            fetchQuizSubmission(courseId: courseId, quizId: quizId) { result in
-                switch result {
-                case .success(let response):
-                    if let quizResponse = response, let quiz = quizResponse.quizSubmissions.first {
-                        let isSubmitted = quiz.workflowState == "complete"
-                        let statusText = isSubmitted ? "Submitted" : "NOT SUBMITTED (\(quiz.workflowState))"
-                        completion(isSubmitted, statusText)
-                    } else {
-                        // No submission found
-                        completion(false, "NOT SUBMITTED")
-                    }
-                case .failure(let error):
-                    print("Error checking quiz submission: \(error)")
-                    completion(false, "Error: \(error.localizedDescription)")
-                }
-            }
-        } else {
-            // Handle regular assignment submission
-            fetchAssignmentSubmission(courseId: courseId, assignmentId: assignment.id) { result in
-                switch result {
-                case .success(let submission):
-                    if let submission = submission {
-                        let isSubmitted = submission.workflowState == "submitted" || submission.workflowState == "graded"
-                        let statusText = isSubmitted ? "Submitted" : "NOT SUBMITTED (\(submission.workflowState ?? "unknown"))"
-                        completion(isSubmitted, statusText)
-                    } else {
-                        // No submission found
-                        completion(false, "NOT SUBMITTED")
-                    }
-                case .failure(let error):
-                    print("Error checking assignment submission: \(error)")
-                    completion(false, "Error: \(error.localizedDescription)")
-                }
-            }
-        }
     }
 }
 
