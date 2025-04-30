@@ -89,9 +89,13 @@ struct CanvasIntegrationView: View {
         .sheet(isPresented: $showingApiGuide) {
             apiGuideModal
         }
-        // Keep university picker sheet for UI
+        // University picker sheet
         .sheet(isPresented: $showingUniversityPicker) {
             universityPickerSheet
+        }
+        // Course selection modal
+        .sheet(isPresented: $viewModel.showingCourseSelectionModal) {
+            CourseSelectionModalView(viewModel: viewModel)
         }
     }
     
@@ -196,14 +200,27 @@ struct CanvasIntegrationView: View {
                 .cornerRadius(12)
                 .padding(.bottom, 8)
                 
-                // Add filter for showing only current courses
-                Toggle("Show only current courses", isOn: $viewModel.showOnlyCurrentCourses)
+                // Course selection button
+                Button(action: {
+                    viewModel.resetCourseVisibilityConfiguration()
+                }) {
+                    HStack {
+                        Image(systemName: "checkmark.circle")
+                        Text("Customize Visible Courses")
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(themeColor)
+                    .padding(.bottom, 12)
+                }
+                
+                // Add filter for showing only future assignments
+                Toggle("Show only future assignments", isOn: $viewModel.showOnlyFutureAssignments)
                     .font(.subheadline)
                     .padding(.horizontal)
                     .padding(.bottom, 12)
-                    .onChange(of: viewModel.showOnlyCurrentCourses) { _ in
-                        // Refresh data when toggle changes
-                        viewModel.fetchCanvasData()
+                    .onChange(of: viewModel.showOnlyFutureAssignments) { _ in
+                        // We don't need to re-fetch data, just force a UI refresh
+                        viewModel.objectWillChange.send()
                     }
                 
                 // Top filter pills
@@ -221,7 +238,7 @@ struct CanvasIntegrationView: View {
                         ]
                         
                         // Add buttons for each course
-                        for course in viewModel.courses {
+                        for course in viewModel.filteredCourses {
                             buttons.append(.default(Text(course.displayName)) { 
                                 viewModel.selectedCourseId = course.id 
                             })
@@ -272,10 +289,13 @@ struct CanvasIntegrationView: View {
                     ProgressView("Loading your Canvas data...")
                         .progressViewStyle(CircularProgressViewStyle(tint: themeColor))
                         .padding()
-                } else if viewModel.courses.isEmpty {
-                    Text("No courses found")
+                } else if viewModel.filteredCourses.isEmpty {
+                    Text(viewModel.hasConfiguredVisibleCourses ? 
+                         "No visible courses selected. Tap 'Customize Visible Courses' to select courses." : 
+                         "No courses found")
                         .foregroundColor(.secondary)
                         .padding()
+                        .multilineTextAlignment(.center)
                 } else {
                     // Course list
                     ScrollView {
@@ -479,6 +499,148 @@ struct CanvasIntegrationView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(trailing: Button("Done") {
                 showingUniversityPicker = false
+            })
+        }
+    }
+}
+
+// MARK: - Course Selection Modal View
+struct CourseSelectionModalView: View {
+    @ObservedObject var viewModel: CanvasIntegrationViewModel
+    let themeColor = Color.purple
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Header explanation
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Select Courses to Display")
+                        .font(.headline)
+                    
+                    Text("Choose which courses you want to see in your Canvas integration. This helps you focus on your current semester's courses.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.systemBackground))
+                
+                // Course list with checkboxes
+                List {
+                    ForEach(viewModel.courses) { course in
+                        HStack {
+                            // Course name
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(course.displayName)
+                                    .font(.headline)
+                                
+                                if course.isCurrent {
+                                    Text("Current course")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                } else {
+                                    Text("Past course")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            // Checkbox
+                            Image(systemName: viewModel.temporaryVisibleCourseIds.contains(course.id) ? "checkmark.circle.fill" : "circle")
+                                .font(.title2)
+                                .foregroundColor(viewModel.temporaryVisibleCourseIds.contains(course.id) ? themeColor : .gray)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            viewModel.toggleCourseVisibility(courseId: course.id)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                
+                // Footer with buttons
+                VStack(spacing: 16) {
+                    // Select/deselect buttons
+                    HStack(spacing: 16) {
+                        Button(action: {
+                            // Select all current courses
+                            viewModel.temporaryVisibleCourseIds = viewModel.courses.filter { $0.isCurrent }.map { $0.id }
+                        }) {
+                            Text("Select Current")
+                                .fontWeight(.medium)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .padding(.vertical, 12)
+                        .background(Color(.systemGray5))
+                        .foregroundColor(.primary)
+                        .cornerRadius(8)
+                        
+                        Button(action: {
+                            // Select all courses
+                            viewModel.temporaryVisibleCourseIds = viewModel.courses.map { $0.id }
+                        }) {
+                            Text("Select All")
+                                .fontWeight(.medium)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .padding(.vertical, 12)
+                        .background(Color(.systemGray5))
+                        .foregroundColor(.primary)
+                        .cornerRadius(8)
+                    }
+                    
+                    Button(action: {
+                        // Deselect all courses
+                        viewModel.temporaryVisibleCourseIds = []
+                    }) {
+                        Text("Deselect All")
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .padding(.vertical, 12)
+                    .background(Color(.systemGray5))
+                    .foregroundColor(.primary)
+                    .cornerRadius(8)
+                    
+                    // Save/cancel buttons
+                    HStack(spacing: 16) {
+                        Button(action: {
+                            viewModel.cancelCourseSelection()
+                        }) {
+                            Text("Cancel")
+                                .fontWeight(.medium)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .padding(.vertical, 14)
+                        .background(Color(.systemGray5))
+                        .foregroundColor(.primary)
+                        .cornerRadius(8)
+                        
+                        Button(action: {
+                            viewModel.saveCourseSelectionPreferences()
+                        }) {
+                            Text("Save")
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .padding(.vertical, 14)
+                        .background(themeColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+                }
+                .padding()
+                .background(Color(.systemBackground))
+                .shadow(color: Color.black.opacity(0.05), radius: 5, y: -5)
+            }
+            .navigationBarTitle("Customize Courses", displayMode: .inline)
+            .navigationBarItems(trailing: Button(action: {
+                viewModel.cancelCourseSelection()
+            }) {
+                Image(systemName: "xmark")
+                    .font(.headline)
             })
         }
     }

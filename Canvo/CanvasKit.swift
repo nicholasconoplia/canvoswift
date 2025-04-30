@@ -80,6 +80,53 @@ struct CanvasKitCourse: Codable, Identifiable {
     }
 }
 
+// Assignment submission model
+struct AssignmentSubmission: Decodable {
+    let id: Int?
+    let workflowState: String?
+    let submittedAt: String?
+    let attempt: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workflowState = "workflow_state"
+        case submittedAt = "submitted_at"
+        case attempt
+    }
+    
+    var isSubmitted: Bool {
+        return workflowState == "submitted" || 
+               workflowState == "graded"
+    }
+}
+
+// Quiz submission models
+struct QuizSubmissionResponse: Decodable {
+    let quizSubmissions: [QuizSubmission]
+    
+    enum CodingKeys: String, CodingKey {
+        case quizSubmissions = "quiz_submissions"
+    }
+}
+
+struct QuizSubmission: Decodable {
+    let id: Int
+    let workflowState: String
+    let attempt: Int
+    let finishedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workflowState = "workflow_state"
+        case attempt
+        case finishedAt = "finished_at"
+    }
+    
+    var isSubmitted: Bool {
+        return workflowState == "complete"
+    }
+}
+
 struct CanvasKitAssignment: Codable, Identifiable {
     let id: Int
     let name: String
@@ -87,6 +134,18 @@ struct CanvasKitAssignment: Codable, Identifiable {
     let submission_types: [String]?
     let has_submitted_submissions: Bool?
     let html_url: String?
+    let quiz_id: Int?
+    
+    // Coding keys to ensure proper encoding/decoding of all properties
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case due_at
+        case submission_types
+        case has_submitted_submissions
+        case html_url
+        case quiz_id
+    }
     
     // Computed properties
     var formattedDueDate: String {
@@ -133,22 +192,26 @@ struct CanvasKitAssignment: Codable, Identifiable {
     
     var assignmentType: String {
         if let types = submission_types, !types.isEmpty {
-            if types.contains("online_upload") || types.contains("online_text_entry") {
-                return "Assignment"
-            } else if types.contains("online_quiz") {
+            if types.contains("online_quiz") {
                 return "Quiz"
-            } else if types.contains("discussion_topic") {
-                return "Discussion"
+            } else {
+                return "Assignment"
             }
         }
         return "Assignment"
     }
     
     var submissionStatus: (String, Color) {
+        // Simple approach using only has_submitted_submissions
         if let submitted = has_submitted_submissions {
             return submitted ? ("Submitted", Color.green) : ("NOT SUBMITTED", Color(hex: "b892ff"))
         }
+        
         return ("Unknown", Color.gray)
+    }
+    
+    var isQuiz: Bool {
+        return assignmentType == "Quiz" || quiz_id != nil
     }
 }
 
@@ -390,6 +453,136 @@ class CanvasKit {
                     completion(false, message)
                 }
             }
+    }
+    
+    /// Fetch assignment submission status
+    func fetchAssignmentSubmission(courseId: Int, assignmentId: Int, completion: @escaping (Result<AssignmentSubmission?, Error>) -> Void) {
+        let urlString = "\(baseURL)/api/v1/courses/\(courseId)/assignments/\(assignmentId)/submissions/self"
+        
+        print("DEBUG: Fetching assignment submission from: \(urlString)")
+        
+        AF.request(urlString, headers: headers)
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    if data.isEmpty {
+                        completion(.success(nil)) // No submission
+                        return
+                    }
+                    
+                    do {
+                        let submission = try JSONDecoder().decode(AssignmentSubmission.self, from: data)
+                        
+                        // Check submission status based on workflow_state
+                        if submission.workflowState == "submitted" || submission.workflowState == "graded" {
+                            print("✅ Assignment has been submitted.")
+                        } else {
+                            print("❌ Assignment not submitted yet. Status: \(submission.workflowState ?? "unknown")")
+                        }
+                        
+                        completion(.success(submission))
+                    } catch {
+                        print("DEBUG: Error decoding assignment submission: \(error)")
+                        completion(.failure(error))
+                    }
+                    
+                case .failure(let error):
+                    // If 404, it means no submission
+                    if let statusCode = response.response?.statusCode, statusCode == 404 {
+                        print("❌ No submission found for this assignment.")
+                        completion(.success(nil))
+                    } else {
+                        completion(.failure(error))
+                    }
+                }
+            }
+    }
+    
+    /// Fetch quiz submission status
+    func fetchQuizSubmission(courseId: Int, quizId: Int, completion: @escaping (Result<QuizSubmissionResponse?, Error>) -> Void) {
+        let urlString = "\(baseURL)/api/v1/courses/\(courseId)/quizzes/\(quizId)/submission"
+        
+        print("DEBUG: Fetching quiz submission from: \(urlString)")
+        
+        AF.request(urlString, headers: headers)
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    if data.isEmpty {
+                        print("❌ No quiz submission data found.")
+                        completion(.success(nil)) // No submission
+                        return
+                    }
+                    
+                    do {
+                        let quizResponse = try JSONDecoder().decode(QuizSubmissionResponse.self, from: data)
+                        
+                        // Use the exact check from the user's code
+                        if let quiz = quizResponse.quizSubmissions.first {
+                            if quiz.workflowState == "complete" {
+                                print("✅ Quiz is submitted.")
+                            } else {
+                                print("❌ Quiz is not submitted yet. Status: \(quiz.workflowState)")
+                            }
+                        }
+                        
+                        completion(.success(quizResponse))
+                    } catch {
+                        print("DEBUG: Error decoding quiz submission: \(error)")
+                        completion(.failure(error))
+                    }
+                    
+                case .failure(let error):
+                    // If 404, it means no submission
+                    if let statusCode = response.response?.statusCode, statusCode == 404 {
+                        print("❌ No quiz submission found.")
+                        completion(.success(nil))
+                    } else {
+                        completion(.failure(error))
+                    }
+                }
+            }
+    }
+    
+    /// Checks the submission status for an assignment or quiz
+    func checkSubmissionStatus(courseId: Int, assignment: CanvasKitAssignment, completion: @escaping (Bool, String) -> Void) {
+        if assignment.isQuiz, let quizId = assignment.quiz_id {
+            // Handle quiz submission
+            fetchQuizSubmission(courseId: courseId, quizId: quizId) { result in
+                switch result {
+                case .success(let response):
+                    if let quizResponse = response, let quiz = quizResponse.quizSubmissions.first {
+                        let isSubmitted = quiz.workflowState == "complete"
+                        let statusText = isSubmitted ? "Submitted" : "NOT SUBMITTED (\(quiz.workflowState))"
+                        completion(isSubmitted, statusText)
+                    } else {
+                        // No submission found
+                        completion(false, "NOT SUBMITTED")
+                    }
+                case .failure(let error):
+                    print("Error checking quiz submission: \(error)")
+                    completion(false, "Error: \(error.localizedDescription)")
+                }
+            }
+        } else {
+            // Handle regular assignment submission
+            fetchAssignmentSubmission(courseId: courseId, assignmentId: assignment.id) { result in
+                switch result {
+                case .success(let submission):
+                    if let submission = submission {
+                        let isSubmitted = submission.workflowState == "submitted" || submission.workflowState == "graded"
+                        let statusText = isSubmitted ? "Submitted" : "NOT SUBMITTED (\(submission.workflowState ?? "unknown"))"
+                        completion(isSubmitted, statusText)
+                    } else {
+                        // No submission found
+                        completion(false, "NOT SUBMITTED")
+                    }
+                case .failure(let error):
+                    print("Error checking assignment submission: \(error)")
+                    completion(false, "Error: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 }
 

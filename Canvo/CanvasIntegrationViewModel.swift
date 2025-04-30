@@ -27,28 +27,50 @@ class CanvasIntegrationViewModel: ObservableObject {
     @AppStorage("customUniversityName") var customUniversityName: String = ""
     @AppStorage("customUniversityURL") var customUniversityURL: String = ""
     
-    @AppStorage("showOnlyCurrentCourses") var showOnlyCurrentCourses: Bool = true
+    // Filtering options
+    @AppStorage("showOnlyFutureAssignments") var showOnlyFutureAssignments: Bool = true
+    
+    // User-selected visible courses
+    @Published var visibleCourseIds: [Int] = []
+    @AppStorage("hasConfiguredVisibleCourses") var hasConfiguredVisibleCourses: Bool = false
     
     // Course filtering
     @Published var selectedCourseId: Int? = nil
+    
+    // Selection modal
+    @Published var showingCourseSelectionModal: Bool = false
+    @Published var temporaryVisibleCourseIds: [Int] = []
     
     // Assignment type filtering
     @Published var selectedAssignmentType: String? = nil
     
     // List of possible assignment types
-    let assignmentTypes = ["Assignment", "Quiz", "Discussion"]
+    let assignmentTypes = ["Assignment", "Quiz"]
     
     // Canvas API client
     private var canvasKit: CanvasKit?
     
     // MARK: - Computed Properties
     
-    // Computed property to get filtered courses based on selection
+    // Computed property to get filtered courses based on selection and visibility
     var filteredCourses: [CanvasKitCourse] {
-        if let courseId = selectedCourseId {
-            return courses.filter { $0.id == courseId }
+        // Start with all courses
+        var filtered = courses
+        
+        // If user has configured visible courses, apply that filter
+        if hasConfiguredVisibleCourses {
+            filtered = filtered.filter { visibleCourseIds.contains($0.id) }
+        } else {
+            // Default behavior when user hasn't configured: only show current courses
+            filtered = filtered.filter { $0.isCurrent }
         }
-        return courses
+        
+        // Then apply the course ID filter if set
+        if let courseId = selectedCourseId {
+            filtered = filtered.filter { $0.id == courseId }
+        }
+        
+        return filtered
     }
     
     // Computed property for the selected university
@@ -103,6 +125,9 @@ class CanvasIntegrationViewModel: ObservableObject {
     
     // Load saved API key from keychain and other state from UserDefaults
     func loadSavedData() {
+        // Load the configured flag first
+        hasConfiguredVisibleCourses = UserDefaults.standard.bool(forKey: "hasConfiguredVisibleCourses")
+        
         if let savedApiKey = loadAPIKeyFromKeychain(), !savedApiKey.isEmpty {
             self.apiKey = savedApiKey
             self.isApiKeyConnected = true
@@ -117,6 +142,18 @@ class CanvasIntegrationViewModel: ObservableObject {
                let savedAssignments = try? JSONDecoder().decode([Int: [CanvasKitAssignment]].self, from: assignmentsData) {
                 self.assignmentsByCourseId = savedAssignments
             }
+            
+            // Load visible course IDs
+            if let visibleCoursesData = UserDefaults.standard.data(forKey: "visibleCourseIds"),
+               let savedVisibleCourses = try? JSONDecoder().decode([Int].self, from: visibleCoursesData) {
+                self.visibleCourseIds = savedVisibleCourses
+                print("DEBUG: Loaded \(savedVisibleCourses.count) visible course IDs from UserDefaults")
+            } else {
+                print("DEBUG: No visible course IDs found in UserDefaults")
+            }
+            
+            // Log debug info about what was loaded
+            print("DEBUG: Loaded from UserDefaults - hasConfiguredVisibleCourses: \(hasConfiguredVisibleCourses), visibleCourseIds count: \(visibleCourseIds.count)")
         }
     }
     
@@ -187,6 +224,15 @@ class CanvasIntegrationViewModel: ObservableObject {
             UserDefaults.standard.set(encodedAssignments, forKey: "savedAssignmentsByCourseId")
         }
         
+        // Save visible course IDs
+        if let encodedVisibleCourses = try? JSONEncoder().encode(self.visibleCourseIds) {
+            UserDefaults.standard.set(encodedVisibleCourses, forKey: "visibleCourseIds")
+            print("DEBUG: Saved \(visibleCourseIds.count) visible course IDs to UserDefaults")
+        }
+        
+        // Save configuration state
+        UserDefaults.standard.set(hasConfiguredVisibleCourses, forKey: "hasConfiguredVisibleCourses")
+        
         // Also save API connection status
         UserDefaults.standard.set(isApiKeyConnected, forKey: "isApiKeyConnected")
     }
@@ -197,6 +243,8 @@ class CanvasIntegrationViewModel: ObservableObject {
         courses = []
         assignmentsByCourseId = [:]
         isApiKeyConnected = false
+        visibleCourseIds = []
+        hasConfiguredVisibleCourses = false
         
         // Remove from keychain
         let service = "com.canvo.apikey"
@@ -212,6 +260,10 @@ class CanvasIntegrationViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "savedCourses")
         UserDefaults.standard.removeObject(forKey: "savedAssignmentsByCourseId")
         UserDefaults.standard.removeObject(forKey: "isApiKeyConnected")
+        UserDefaults.standard.removeObject(forKey: "visibleCourseIds")
+        UserDefaults.standard.removeObject(forKey: "hasConfiguredVisibleCourses")
+        
+        print("DEBUG: All Canvas data cleared")
     }
     
     // MARK: - Canvas API Integration
@@ -292,10 +344,7 @@ class CanvasIntegrationViewModel: ObservableObject {
     
     // Process fetched courses
     private func processFetchedCourses(_ fetchedCourses: [CanvasKitCourse]) {
-        // Create local copies to avoid data races
-        let shouldFilterToCurrent = self.showOnlyCurrentCourses
-        
-        print("DEBUG: Processing \(fetchedCourses.count) courses, showOnlyCurrentCourses = \(shouldFilterToCurrent)")
+        print("DEBUG: Processing \(fetchedCourses.count) courses")
         
         // Debug details about the courses
         for (index, course) in fetchedCourses.enumerated() {
@@ -307,14 +356,8 @@ class CanvasIntegrationViewModel: ObservableObject {
             }
         }
         
-        // Filter courses if needed
-        let filteredCourses = shouldFilterToCurrent ? 
-            fetchedCourses.filter { $0.isCurrent } : 
-            fetchedCourses
-        
-        print("DEBUG: After filtering, \(filteredCourses.count) courses remain")
-        
-        let sortedCourses = filteredCourses.sorted { $0.displayName < $1.displayName }
+        // We no longer filter courses here - just sort them alphabetically
+        let sortedCourses = fetchedCourses.sorted { $0.displayName < $1.displayName }
         
         // Update on main thread (we're already on main thread from fetchCourses)
         self.courses = sortedCourses
@@ -390,17 +433,138 @@ class CanvasIntegrationViewModel: ObservableObject {
             self.isApiKeyConnected = true
             self.saveAPIKeyToKeychain()
             self.saveCanvasData()
+            
+            // If this is the first time loading courses or we need to reconfigure,
+            // show the course selection modal
+            if self.isApiKeyConnected && !self.hasConfiguredVisibleCourses && !self.courses.isEmpty {
+                self.prepareCourseSelection()
+            }
         }
     }
     
-    // Computed property for filtered assignments based on type selection
+    // Prepares course selection modal by setting up temporary values
+    func prepareCourseSelection() {
+        // Start with all currently visible courses if already configured
+        // Otherwise, pre-select current courses as a convenience for the user
+        if hasConfiguredVisibleCourses {
+            print("DEBUG: Loading existing course selection: \(visibleCourseIds.count) courses")
+            temporaryVisibleCourseIds = visibleCourseIds
+        } else {
+            // Default to showing current courses if the user hasn't made a selection yet
+            let preSelectedCourses = courses.filter { $0.isCurrent }.map { $0.id }
+            print("DEBUG: Pre-selecting \(preSelectedCourses.count) current courses")
+            temporaryVisibleCourseIds = preSelectedCourses
+        }
+        
+        showingCourseSelectionModal = true
+    }
+    
+    // Saves course visibility preferences from the modal
+    func saveCourseSelectionPreferences() {
+        visibleCourseIds = temporaryVisibleCourseIds
+        hasConfiguredVisibleCourses = true
+        showingCourseSelectionModal = false
+        
+        // Save the updated visibleCourseIds to UserDefaults
+        if let encodedVisibleCourses = try? JSONEncoder().encode(self.visibleCourseIds) {
+            UserDefaults.standard.set(encodedVisibleCourses, forKey: "visibleCourseIds")
+            print("DEBUG: Saved \(visibleCourseIds.count) visible course IDs to UserDefaults")
+        }
+        
+        // Make sure the configuration flag is saved
+        UserDefaults.standard.set(true, forKey: "hasConfiguredVisibleCourses")
+        
+        // Force UI refresh
+        objectWillChange.send()
+    }
+    
+    // Cancels course selection without saving
+    func cancelCourseSelection() {
+        // Discard temporary changes
+        temporaryVisibleCourseIds = visibleCourseIds
+        showingCourseSelectionModal = false
+        print("DEBUG: Course selection cancelled, discarding changes")
+    }
+    
+    // Toggle a course's visibility in the temporary selection
+    func toggleCourseVisibility(courseId: Int) {
+        if temporaryVisibleCourseIds.contains(courseId) {
+            temporaryVisibleCourseIds.removeAll { $0 == courseId }
+        } else {
+            temporaryVisibleCourseIds.append(courseId)
+        }
+    }
+    
+    // Resets course visibility configuration to show the modal again
+    func resetCourseVisibilityConfiguration() {
+        hasConfiguredVisibleCourses = false
+        prepareCourseSelection()
+    }
+    
+    // Computed property for filtered assignments based on type selection and due date
     func filteredAssignments(for courseId: Int) -> [CanvasKitAssignment] {
         let assignments = assignmentsByCourseId[courseId] ?? []
         
-        if let type = selectedAssignmentType {
-            return assignments.filter { $0.assignmentType == type }
+        // Apply filters
+        return assignments.filter { assignment in
+            // Filter by assignment type if selected
+            if let type = selectedAssignmentType, assignment.assignmentType != type {
+                return false
+            }
+            
+            // Filter by due date if enabled
+            if showOnlyFutureAssignments, let dueAtString = assignment.due_at {
+                let formatter = ISO8601DateFormatter()
+                
+                // Try with fractional seconds
+                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                var dueDate = formatter.date(from: dueAtString)
+                
+                // Try without fractional seconds if first attempt failed
+                if dueDate == nil {
+                    formatter.formatOptions = [.withInternetDateTime]
+                    dueDate = formatter.date(from: dueAtString)
+                }
+                
+                // If we successfully parsed the date, check if it's in the future
+                if let date = dueDate {
+                    let currentDate = Date()
+                    if date < currentDate && !Calendar.current.isDateInToday(date) {
+                        // Skip assignment if it's due in the past and not due today
+                        return false
+                    }
+                }
+            }
+            
+            // Assignment passed all filters
+            return true
+        }.sorted { a, b in
+            // Sort by due date (soonest first)
+            
+            // Helper function to parse ISO8601 date
+            func parseDate(_ dateString: String?) -> Date? {
+                guard let dateString = dateString else { return nil }
+                
+                let formatter = ISO8601DateFormatter()
+                
+                // Try with fractional seconds
+                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                var date = formatter.date(from: dateString)
+                
+                // Try without fractional seconds if first attempt failed
+                if date == nil {
+                    formatter.formatOptions = [.withInternetDateTime]
+                    date = formatter.date(from: dateString)
+                }
+                
+                return date
+            }
+            
+            // Get dates or use distant future for those without due dates
+            let dateA = parseDate(a.due_at) ?? Date.distantFuture
+            let dateB = parseDate(b.due_at) ?? Date.distantFuture
+            
+            return dateA < dateB
         }
-        
-        return assignments
     }
 } 
