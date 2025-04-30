@@ -2,7 +2,12 @@ import SwiftUI
 import Combine
 
 class ThemeManager: ObservableObject {
-    @Published private(set) var themeColor: Color
+    @Published var themeColor: Color {
+        didSet {
+            objectWillChange.send()
+        }
+    }
+    
     @Published var hue: Double {
         didSet {
             UserDefaults.standard.set(hue, forKey: "themeHue")
@@ -56,7 +61,6 @@ class ThemeManager: ObservableObject {
     }
     
     private func updateThemeColor() {
-        objectWillChange.send()
         themeColor = Color(hue: hue, saturation: saturation, brightness: lightness)
     }
     

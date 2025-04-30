@@ -68,7 +68,7 @@ struct ContentView: View {
                     }
                 }
                 .navigationTitle("Canvo")
-                .navigationBarTitleDisplayMode(.large)
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button {
@@ -92,7 +92,7 @@ struct ContentView: View {
                     }
                 }
                 .navigationTitle("Canvas")
-                .navigationBarTitleDisplayMode(.large)
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) { 
                         Button {
@@ -685,4 +685,5 @@ struct ContentView: View {
 // --- Preview ---
 #Preview {
     ContentView()
+        .environmentObject(ThemeManager())
 }

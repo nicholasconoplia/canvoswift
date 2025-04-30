@@ -82,19 +82,11 @@ class SubmissionStatusService {
             return false
         }
         
-        // Check submission status using the same logic as the JavaScript version:
-        // 1. workflowState is "submitted" OR
-        // 2. workflowState is "graded" OR
-        // 3. Has a submittedAt timestamp AND attempt > 0
-        let workflowState = submission.workflowState
-        let submittedAt = submission.submittedAt
+        // Prioritize using attempts to determine submission status
         let attempt = submission.attempt ?? 0
+        let isSubmitted = attempt > 0
         
-        let isSubmitted = workflowState == "submitted" || 
-               workflowState == "graded" || 
-               (submittedAt != nil && attempt > 0)
-
-        print("[DEBUG SubmissionService] Values - workflowState: '\(String(describing: workflowState))', submittedAt: '\(String(describing: submittedAt))', attempt: \(attempt). Result: \(isSubmitted)")
+        print("[DEBUG SubmissionService] Values - attempt: \(attempt). Result: \(isSubmitted)")
         return isSubmitted
     }
 }
@@ -187,33 +179,14 @@ struct CanvasIntegrationView: View {
     var isDarkMode: Bool = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Title section
-            Text("Canvas Integration")
-                .font(.headline)
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(themeManager.themeColor)
-                .foregroundColor(.white)
-            // Canvas tab shell: just university picker, API key, and placeholder
-            apiSetupView
-            Spacer()
-            
-            if viewModel.courses.isEmpty && !viewModel.isLoading {
-            VStack {
-                Image(systemName: "rectangle.stack.badge.person.crop")
-                    .font(.system(size: 48))
-                    .foregroundColor(.gray.opacity(0.4))
-                Text("Canvas LMS integration will appear here.")
-                    .foregroundColor(.gray)
-                    .padding(.top, 8)
-            }
-            Spacer()
+        ScrollView {
+            VStack(spacing: 0) {
+                // Canvas tab shell: just university picker, API key, and placeholder
+                apiSetupView
             }
         }
         .background(Color(.systemBackground))
         .cornerRadius(12)
-        .shadow(radius: 3)
         // API Key Guide Modal
         .sheet(isPresented: $showingApiGuide) {
             apiGuideModal
@@ -225,6 +198,48 @@ struct CanvasIntegrationView: View {
         // Course selection modal
         .sheet(isPresented: $viewModel.showingCourseSelectionModal) {
             CourseSelectionModalView(viewModel: viewModel)
+        }
+        // Course filter action sheet
+        .actionSheet(isPresented: $showingCourseFilterMenu) {
+            var buttons: [ActionSheet.Button] = [
+                .default(Text("All Courses")) { viewModel.selectedCourseId = nil }
+            ]
+            
+            // Add buttons for each course
+            for course in viewModel.filteredCourses {
+                buttons.append(.default(Text(course.displayName)) { 
+                    viewModel.selectedCourseId = course.id 
+                })
+            }
+            
+            buttons.append(.cancel())
+            
+            return ActionSheet(
+                title: Text("Filter by Course"),
+                message: nil,
+                buttons: buttons
+            )
+        }
+        // Assignment type filter action sheet
+        .actionSheet(isPresented: $showingTypeFilterMenu) {
+            var buttons: [ActionSheet.Button] = [
+                .default(Text("All Types")) { viewModel.selectedAssignmentType = nil }
+            ]
+            
+            // Add buttons for each assignment type
+            for type in viewModel.assignmentTypes {
+                buttons.append(.default(Text(type)) { 
+                    viewModel.selectedAssignmentType = type 
+                })
+            }
+            
+            buttons.append(.cancel())
+            
+            return ActionSheet(
+                title: Text("Filter by Assignment Type"),
+                message: nil,
+                buttons: buttons
+            )
         }
     }
     
@@ -305,143 +320,100 @@ struct CanvasIntegrationView: View {
                 }
             } else {
                 // Canvas Integration Bar when connected
-                HStack {
-                    Text("Canvas Integration Connected")
-                        .font(.subheadline)
-                        .foregroundColor(themeManager.themeColor)
-                        .fontWeight(.semibold)
-                    Spacer()
-                    Button(action: {
-                        viewModel.clearSavedData()
-                    }) {
-                        Text("Disconnect")
-                            .font(.caption)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.red)
-                            .cornerRadius(8)
-                    }
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal)
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                .padding(.bottom, 8)
-                
-                // Course selection button
-                Button(action: {
-                    viewModel.resetCourseVisibilityConfiguration()
-                }) {
+                VStack(spacing: 16) {
                     HStack {
-                        Image(systemName: "checkmark.circle")
-                        Text("Customize Visible Courses")
+                        Text("Canvas Integration Connected")
+                            .font(.subheadline)
+                            .foregroundColor(themeManager.themeColor)
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Button(action: {
+                            viewModel.clearSavedData()
+                        }) {
+                            Text("Disconnect")
+                                .font(.caption)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.red)
+                                .cornerRadius(8)
+                        }
                     }
-                    .font(.subheadline)
-                    .foregroundColor(themeManager.themeColor)
-                    .padding(.bottom, 12)
-                }
-                
-                // Add filter for showing only future assignments
-                Toggle("Show only future assignments", isOn: $viewModel.showOnlyFutureAssignments)
-                    .font(.subheadline)
+                    .padding(.vertical, 12)
                     .padding(.horizontal)
-                    .padding(.bottom, 12)
-                    .onChange(of: viewModel.showOnlyFutureAssignments) { _ in
-                        // We don't need to re-fetch data, just force a UI refresh
-                        viewModel.objectWillChange.send()
-                    }
-                
-                // Refresh button
-                Button(action: {
-                    viewModel.fetchCanvasData()
-                }) {
-                    HStack {
-                        Image(systemName: "arrow.clockwise")
-                        Text("Refresh Data")
-                    }
-                    .foregroundColor(themeManager.themeColor)
-                }
-                .padding(.horizontal)
-                .padding(.bottom, 12)
-                
-                // Top filter pills
-                HStack(spacing: 16) {
-                    // Course filter
-                    FilterPillButton(
-                        title: viewModel.selectedCourseId == nil ? "All Courses" : viewModel.courses.first(where: { $0.id == viewModel.selectedCourseId })?.displayName ?? "Course",
-                        isActive: true
-                    ) {
-                        showingCourseFilterMenu = true
-                    }
-                    .actionSheet(isPresented: $showingCourseFilterMenu) {
-                        var buttons: [ActionSheet.Button] = [
-                            .default(Text("All Courses")) { viewModel.selectedCourseId = nil }
-                        ]
-                        
-                        // Add buttons for each course
-                        for course in viewModel.filteredCourses {
-                            buttons.append(.default(Text(course.displayName)) { 
-                                viewModel.selectedCourseId = course.id 
-                            })
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    
+                    // Course selection and refresh buttons in one row
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            viewModel.resetCourseVisibilityConfiguration()
+                        }) {
+                            HStack {
+                                Image(systemName: "checkmark.circle")
+                                Text("Customize Visible Courses")
+                            }
+                            .font(.subheadline)
+                            .foregroundColor(themeManager.themeColor)
                         }
                         
-                        buttons.append(.cancel())
+                        Spacer()
                         
-                        return ActionSheet(
-                            title: Text("Filter by Course"),
-                            message: nil,
-                            buttons: buttons
-                        )
+                        // Refresh button
+                        Button(action: {
+                            viewModel.fetchCanvasData()
+                        }) {
+                            HStack {
+                                Image(systemName: "arrow.clockwise")
+                                Text("Refresh")
+                            }
+                            .foregroundColor(themeManager.themeColor)
+                            .font(.subheadline)
+                        }
                     }
                     
-                    // Assignment type filter
-                    FilterPillButton(
-                        title: viewModel.selectedAssignmentType == nil ? "All Types" : viewModel.selectedAssignmentType!,
-                        isActive: true
-                    ) {
-                        showingTypeFilterMenu = true
-                    }
-                    .actionSheet(isPresented: $showingTypeFilterMenu) {
-                        var buttons: [ActionSheet.Button] = [
-                            .default(Text("All Types")) { viewModel.selectedAssignmentType = nil }
-                        ]
-                        
-                        // Add buttons for each assignment type
-                        for type in viewModel.assignmentTypes {
-                            buttons.append(.default(Text(type)) { 
-                                viewModel.selectedAssignmentType = type 
-                            })
+                    // Add filter for showing only future assignments
+                    Toggle("Show only future assignments", isOn: $viewModel.showOnlyFutureAssignments)
+                        .font(.subheadline)
+                        .padding(.horizontal)
+                        .onChange(of: viewModel.showOnlyFutureAssignments) { _ in
+                            viewModel.objectWillChange.send()
+                        }
+                    
+                    // Top filter pills
+                    HStack(spacing: 16) {
+                        // Course filter
+                        FilterPillButton(
+                            title: viewModel.selectedCourseId == nil ? "All Courses" : viewModel.courses.first(where: { $0.id == viewModel.selectedCourseId })?.displayName ?? "Course",
+                            isActive: true
+                        ) {
+                            showingCourseFilterMenu = true
                         }
                         
-                        buttons.append(.cancel())
-                        
-                        return ActionSheet(
-                            title: Text("Filter by Assignment Type"),
-                            message: nil,
-                            buttons: buttons
-                        )
+                        // Assignment type filter
+                        FilterPillButton(
+                            title: viewModel.selectedAssignmentType == nil ? "All Types" : viewModel.selectedAssignmentType!,
+                            isActive: true
+                        ) {
+                            showingTypeFilterMenu = true
+                        }
                     }
-                }
-                .padding(.horizontal)
-                .padding(.bottom, 8)
-                
-                // Show only current courses toggle (moved to settings)
-                if viewModel.isLoading {
-                    ProgressView("Loading your Canvas data...")
-                        .progressViewStyle(CircularProgressViewStyle(tint: themeManager.themeColor))
-                        .padding()
-                } else if viewModel.filteredCourses.isEmpty {
-                    Text(viewModel.hasConfiguredVisibleCourses ? 
-                         "No visible courses selected. Tap 'Customize Visible Courses' to select courses." : 
-                         "No courses found")
-                        .foregroundColor(.secondary)
-                        .padding()
-                        .multilineTextAlignment(.center)
-                } else {
+                    .padding(.horizontal)
+                    
                     // Course list
-                    ScrollView {
-                        LazyVStack(spacing: 16) {
+                    if viewModel.isLoading {
+                        ProgressView("Loading your Canvas data...")
+                            .progressViewStyle(CircularProgressViewStyle(tint: themeManager.themeColor))
+                            .padding()
+                    } else if viewModel.filteredCourses.isEmpty {
+                        Text(viewModel.hasConfiguredVisibleCourses ? 
+                             "No visible courses selected. Tap 'Customize Visible Courses' to select courses." : 
+                             "No courses found")
+                            .foregroundColor(.secondary)
+                            .padding()
+                            .multilineTextAlignment(.center)
+                    } else {
+                        VStack(spacing: 16) {
                             ForEach(viewModel.filteredCourses) { course in
                                 CourseCardView(
                                     course: course, 
@@ -451,12 +423,9 @@ struct CanvasIntegrationView: View {
                                 )
                             }
                         }
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, 4)
                     }
                 }
-                
-
             }
 
             // Display error message
@@ -818,7 +787,7 @@ struct CourseCardView: View {
                 }
             }
         }
-        .padding()
+        .padding(8)
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
@@ -846,40 +815,36 @@ struct AssignmentCardView: View {
             
             // Tags row with submission status
             HStack(spacing: 12) {
+                // Submission status badge
+                if assignment.submissionStatus.0 == "Submitted" {
+                    Label("Submitted", systemImage: "checkmark")
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemGray6).opacity(0.8).background(Color.green.opacity(0.5)))
+                        .foregroundColor(Color(.systemGray))
+                        .cornerRadius(16)
+                } else {
+                    Text("Not Submitted")
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemGray6).opacity(0.8).background(Color.red.opacity(0.5)))
+                        .foregroundColor(Color(.systemGray))
+                        .cornerRadius(16)
+                }
+                
                 // Assignment type tag
                 Text(assignment.assignmentType)
                     .font(.caption)
                     .fontWeight(.medium)
                     .foregroundColor(.white)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
                     .padding(.horizontal, 12)
                     .background(themeManager.themeColor)
                     .cornerRadius(16)
                 
                 Spacer()
-                
-                // Submission status badge
-                if assignment.submissionStatus.0 == "Submitted" {
-                    Label("Submitted", systemImage: "checkmark")
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.green)
-                        .foregroundColor(.white)
-                        .cornerRadius(4)
-                } else {
-                    Text("Not Submitted")
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color(UIColor.systemGray5))
-                        .foregroundColor(Color(UIColor.systemGray))
-                        .cornerRadius(4)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color(UIColor.systemGray4), lineWidth: 1)
-                        )
-                }
             }
             
             // Due date row
