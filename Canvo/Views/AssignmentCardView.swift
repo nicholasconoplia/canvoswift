@@ -11,7 +11,7 @@ struct AssignmentCardView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             // Assignment Title and Type
             HStack {
                 Text(assignment.name)
@@ -45,7 +45,8 @@ struct AssignmentCardView: View {
                     .foregroundColor(.secondary)
             }
         }
-        .padding()
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
         .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)

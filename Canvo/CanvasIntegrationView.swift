@@ -817,7 +817,7 @@ struct CourseCardView: View {
             } else {
                 ForEach(viewModel.filteredAssignments(for: course.id)) { assignment in
                     AssignmentCardView(assignment: assignment, viewModel: viewModel)
-                        .padding(.bottom, 16)
+                        .padding(.bottom, 8)
                 }
             }
         }

@@ -62,12 +62,6 @@ struct SubmissionStatus {
                     self.detail = nil
                 }
             }
-            // Then check for late submissions
-            else if submission.late {
-                self.state = .late
-                self.displayText = "Submitted Late"
-                self.detail = submission.submittedAt.map { "Submitted on: \(DateFormatter.submissionDateFormatter.string(from: DateFormatter.iso8601Full.date(from: $0) ?? Date()))" }
-            }
             // Then check for missing assignments
             else if submission.missing {
                 self.state = .missing
