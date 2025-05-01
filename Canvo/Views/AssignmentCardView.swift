@@ -13,6 +13,13 @@ struct AssignmentCardView: View {
         viewModel.submissionStatus(for: assignment)
     }
     
+    private func openCanvasURL() {
+        if let urlString = assignment.html_url,
+           let url = URL(string: urlString) {
+            UIApplication.shared.open(url)
+        }
+    }
+    
     var body: some View {
         ZStack {
             // Green background with + button that appears when swiped
@@ -76,6 +83,28 @@ struct AssignmentCardView: View {
                     Text(detail)
                         .font(.caption)
                         .foregroundColor(.secondary)
+                }
+                
+                // View in Canvas button
+                if assignment.html_url != nil {
+                    HStack {
+                        Spacer()
+                        Button(action: openCanvasURL) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "safari")
+                                    .font(.caption)
+                                Text("VIEW IN CANVAS")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(themeManager.themeColor.opacity(0.1))
+                            .foregroundColor(themeManager.themeColor)
+                            .cornerRadius(8)
+                        }
+                    }
+                    .padding(.top, 4)
                 }
             }
             .padding(.vertical, 8)
