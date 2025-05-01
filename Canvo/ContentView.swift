@@ -65,9 +65,12 @@ struct ContentView: View {
                     } else if selectedTab == 1 {
                         // Canvas Content
                         CanvasIntegrationView()
-                    } else {
+                    } else if selectedTab == 2 {
                         // Wheel Spinner Content
                         WheelSpinnerView(taskLists: $taskLists)
+                    } else {
+                        // Calendar Content
+                        CalendarView(taskLists: $taskLists)
                     }
                 }
                 .navigationTitle("Canvo")
@@ -135,6 +138,30 @@ struct ContentView: View {
                 Label("Wheel", systemImage: "circle.circle")
             }
             .tag(2)
+            
+            NavigationView {
+                VStack(spacing: 0) {
+                    if selectedTab == 3 {
+                        CalendarView(taskLists: $taskLists)
+                    }
+                }
+                .navigationTitle("Calendar")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) { 
+                        Button {
+                            showingSettings = true
+                        } label: {
+                            Image(systemName: "gear")
+                                .foregroundColor(themeManager.themeColor)
+                        }
+                    }
+                }
+            }
+            .tabItem {
+                Label("Calendar", systemImage: "calendar")
+            }
+            .tag(3)
         }
         .tint(themeManager.themeColor) // Set tab bar and navigation tint
         .sheet(isPresented: $showingSettings) {
