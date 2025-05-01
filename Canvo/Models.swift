@@ -38,7 +38,21 @@ struct Task: Identifiable, Hashable, Codable {
 
 // Struct for a Task List
 struct TaskList: Identifiable, Hashable, Codable {
-    let id = UUID()
+    let id: UUID
     var name: String
     var tasks: [Task] = [] // Array to hold tasks for this list
+    
+    // Default initializer creates a new UUID
+    init(name: String, tasks: [Task] = []) {
+        self.id = UUID()
+        self.name = name
+        self.tasks = tasks
+    }
+    
+    // Custom initializer allowing an existing ID to be passed
+    init(id: UUID, name: String, tasks: [Task] = []) {
+        self.id = id
+        self.name = name
+        self.tasks = tasks
+    }
 } 

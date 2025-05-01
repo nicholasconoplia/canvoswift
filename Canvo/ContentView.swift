@@ -110,23 +110,22 @@ struct ContentView: View {
             .tag(1)
         }
         .tint(themeManager.themeColor) // Set tab bar and navigation tint
-            .sheet(isPresented: $showingSettings) {
+        .sheet(isPresented: $showingSettings) {
             SettingsView()
+        }
+        // Add Task Date Picker Sheet
+        .sheet(isPresented: $showingDatePicker) {
+            datePickerSheet // Moved from TasksView
+        }
+        // Context Menu Date Picker Sheet
+        .sheet(isPresented: $showingContextMenuDatePicker) {
+            // Ensure we still have the task context when sheet appears
+            if let task = contextMenuTask, let listID = contextMenuTaskListID {
+                contextMenuDatePickerSheet(taskBinding: taskBinding(taskID: task.id, listID: listID)) // Moved from TasksView
             }
-            // Add Task Date Picker Sheet
-             .sheet(isPresented: $showingDatePicker) {
-                datePickerSheet // Moved from TasksView
-            }
-            // Context Menu Date Picker Sheet
-            .sheet(isPresented: $showingContextMenuDatePicker) {
-                // Ensure we still have the task context when sheet appears
-                if let task = contextMenuTask, let listID = contextMenuTaskListID {
-                    contextMenuDatePickerSheet(taskBinding: taskBinding(taskID: task.id, listID: listID)) // Moved from TasksView
-                }
-            }
-
-            // --- Overlays ---
-            
+        }
+        // --- Overlays ---
+        .overlay {
             // Dimmed Background Overlay (covers everything when overlays are active)
             if showingContextMenu || showingContextMenuDatePicker || showingNotesEditor || showingPriorityPicker || isAddTaskExpanded {
                 Color.black.opacity(0.4)
@@ -136,7 +135,8 @@ struct ContentView: View {
                     }
                     .zIndex(1) // Ensure dimming is above main content but below overlays
             }
-
+        }
+        .overlay {
             // Context Menu View (Conditional)
             if showingContextMenu, let task = contextMenuTask, let listID = contextMenuTaskListID {
                 TaskContextMenu(
@@ -163,7 +163,8 @@ struct ContentView: View {
                 .transition(.scale.combined(with: .opacity))
                 .zIndex(2) // Ensure overlay is above dimming
             }
-
+        }
+        .overlay {
             // Notes Editor Overlay (Conditional)
             if showingNotesEditor, let task = contextMenuTask, let listID = contextMenuTaskListID {
                 NotesEditorView(
@@ -174,7 +175,8 @@ struct ContentView: View {
                 .transition(.scale.combined(with: .opacity))
                 .zIndex(2) // Ensure overlay is above dimming
             }
-
+        }
+        .overlay {
             // Priority Picker Overlay (Conditional - Context Menu)
             if showingPriorityPicker, let task = contextMenuTask, let listID = contextMenuTaskListID {
                 PriorityPickerView(
@@ -185,13 +187,30 @@ struct ContentView: View {
                 .transition(.scale.combined(with: .opacity))
                 .zIndex(2) // Ensure overlay is above dimming
             }
-            
+        }
+        .overlay {
             // Add Task Form Overlay (when FAB is tapped)
             if isAddTaskExpanded {
                 addTaskFormOverlay // Moved from TasksView
                     .transition(.scale.combined(with: .opacity))
                     .zIndex(2) // Ensure overlay is above dimming
             }
+        }
+        .onAppear {
+            setupView()
+        }
+        .onDisappear {
+            cleanupView()
+        }
+        .onChange(of: selectedTab) { newTab in
+            // Save task lists when switching tabs
+            if newTab != 0 { // If switching away from Tasks tab
+                saveTaskLists()
+            } else { // If switching to Tasks tab
+                // Reload task lists when switching to Tasks tab
+                reloadTaskLists()
+            }
+        }
     }
 
     // MARK: - Setup and Cleanup
@@ -206,7 +225,14 @@ struct ContentView: View {
         ) { _ in
             // Structs don't need weak self - they're value types
             DispatchQueue.main.async {
+                // Make sure we're actually getting a fresh copy
+                print("ContentView: Received TaskListsUpdated notification")
                 self.reloadTaskLists()
+                
+                // Force refresh again after a short delay to ensure UI updates
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.reloadTaskLists()
+                }
             }
         }
         // Ensure TextEditor background is clear for overlay placeholder
@@ -228,7 +254,21 @@ struct ContentView: View {
     
     /// Reload task lists from UserDefaults
     private func reloadTaskLists() {
-        taskLists = DataManager.load()
+        print("ContentView: Reloading task lists")
+        
+        // Load fresh data directly from DataManager
+        let freshLists = DataManager.load()
+        
+        // Create a deep copy to ensure SwiftUI detects the change
+        var updatedLists: [TaskList] = []
+        for list in freshLists {
+            updatedLists.append(list)
+        }
+        
+        // Update state with the new copy
+        self.taskLists = updatedLists
+        
+        print("ContentView: Task lists reloaded - found \(taskLists.count) lists with \(taskLists.reduce(0) { $0 + $1.tasks.count }) total tasks")
     }
 
     // MARK: - Common UI Elements (Header, Tabs)
@@ -581,6 +621,9 @@ struct ContentView: View {
             // Prepend to show new task at the top (optional)
             taskLists[listIndex].tasks.insert(newTask, at: 0)
             print("Added task '\(newTaskName)' to list '\(taskLists[listIndex].name)'")
+            
+            // Save task lists after adding a new task
+            DataManager.save(lists: taskLists)
 
             // Reset fields and dismiss
             newTaskName = ""
@@ -679,6 +722,12 @@ struct ContentView: View {
         // Reset context task *after* animation if needed, or immediately
         contextMenuTask = nil
         contextMenuTaskListID = nil
+    }
+
+    /// Save task lists to UserDefaults
+    private func saveTaskLists() {
+        DataManager.save(lists: taskLists)
+        print("Task lists saved: \(taskLists.count) lists with \(taskLists.flatMap { $0.tasks }.count) total tasks")
     }
 }
 

@@ -105,11 +105,34 @@ struct TasksView: View {
                     ListHeaderView(list: $list)
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 15, bottom: 8, trailing: 15))
+                .contentShape(Rectangle()) // Make entire area tappable
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) {
+                        deleteTaskList(list)
+                    } label: {
+                        Label("Delete", systemImage: "trash.fill")
+                    }
+                }
             }
         }
         .listStyle(.plain)
-        .onAppear { initializeExpandedIDs() }
-        .onChange(of: taskLists) { initializeExpandedIDs() } 
+        .refreshable {
+            // Explicitly refresh from DataManager
+            refreshTaskLists()
+            
+            // Post notification to ensure other views update
+            NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+        }
+        .onAppear { 
+            // Force refresh when view appears
+            refreshTaskLists()
+            // Initialize expanded IDs
+            initializeExpandedIDs()
+        }
+        .onChange(of: taskLists) { _ in
+            // Only initialize missing IDs, don't reset existing ones
+            updateExpandedIDs()
+        }
     }
 
     /// A view for the editable list header
@@ -241,6 +264,12 @@ struct TasksView: View {
                 if let listIndex = taskLists.firstIndex(where: { $0.id == list.id }),
                    let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == task.wrappedValue.id }) {
                     taskLists[listIndex].tasks.remove(at: taskIndex)
+                    
+                    // Save the updated taskLists to persistent storage
+                    DataManager.save(lists: taskLists)
+                    
+                    // Post notification to ensure other views update
+                    NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
                 }
             } label: {
                 Label("Delete", systemImage: "trash.fill")
@@ -266,18 +295,56 @@ struct TasksView: View {
 
     // MARK: - Helper Methods (Local to TasksView)
     
+    /// Function to explicitly refresh task lists data from storage
+    func refreshTaskLists() {
+        print("TasksView: Refreshing task lists from storage")
+        
+        // Store current expanded state
+        let currentExpandedIDs = expandedListIDs
+        
+        // Load fresh data from DataManager
+        let freshLists = DataManager.load()
+        
+        // Important: Create a deep copy to force SwiftUI to recognize changes
+        var updatedLists: [TaskList] = []
+        for list in freshLists {
+            updatedLists.append(list)
+        }
+        
+        // Update task lists with the new copy
+        taskLists = updatedLists
+        
+        // Restore expanded state
+        expandedListIDs = currentExpandedIDs
+        
+        // If no lists are expanded and there are lists, expand the first one
+        if expandedListIDs.isEmpty && !taskLists.isEmpty {
+            expandedListIDs.insert(taskLists[0].id)
+        }
+        
+        print("TasksView: Refresh complete - found \(taskLists.count) lists")
+    }
+    
     /// Initializes or updates the set of expanded list IDs.
     private func initializeExpandedIDs() {
-         // Keep existing expanded lists expanded if they still exist
-         let currentListIDs = Set(taskLists.map { $0.id })
-         expandedListIDs = expandedListIDs.intersection(currentListIDs)
-         // Optionally, expand new lists by default:
-         // let newLists = currentListIDs.subtracting(expandedListIDs)
-         // expandedListIDs.formUnion(newLists)
-         // Or ensure at least one is expanded if list is not empty:
-         if expandedListIDs.isEmpty && !taskLists.isEmpty {
-             expandedListIDs.insert(taskLists[0].id)
-         }
+        // If no lists are expanded and there are lists, expand the first one by default
+        if expandedListIDs.isEmpty && !taskLists.isEmpty {
+            expandedListIDs.insert(taskLists[0].id)
+        }
+    }
+    
+    /// Updates expanded IDs when task lists change, preserving current expanded state
+    private func updateExpandedIDs() {
+        // Get current list IDs
+        let currentListIDs = Set(taskLists.map { $0.id })
+        
+        // Only remove expanded IDs for lists that no longer exist
+        expandedListIDs = expandedListIDs.intersection(currentListIDs)
+        
+        // If all lists are now collapsed and we have lists, expand the first one
+        if expandedListIDs.isEmpty && !taskLists.isEmpty {
+            expandedListIDs.insert(taskLists[0].id)
+        }
     }
 
     /// Adds a new list to the taskLists binding.
@@ -288,6 +355,12 @@ struct TasksView: View {
         // Optionally expand the new list
         expandedListIDs.insert(newList.id)
         newListName = "" // Clear input
+        
+        // Save task lists after adding a new list
+        DataManager.save(lists: taskLists)
+        
+        // Post notification to ensure other views update
+        NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
     }
     
     /// Toggles the completion state of a task using its ID.
@@ -296,6 +369,12 @@ struct TasksView: View {
             let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == taskID }) {
              // Mutate the binding
              taskLists[listIndex].tasks[taskIndex].isCompleted.toggle()
+             
+             // Save changes to persistent storage
+             DataManager.save(lists: taskLists)
+             
+             // Post notification to ensure other views update
+             NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
          }
      }
 
@@ -311,6 +390,21 @@ struct TasksView: View {
                 }
             }
         )
+    }
+
+    /// Deletes a task list
+    private func deleteTaskList(_ list: TaskList) {
+        // Remove the list from the array
+        taskLists.removeAll { $0.id == list.id }
+        
+        // Remove the ID from expanded IDs if it exists
+        expandedListIDs.remove(list.id)
+        
+        // Save changes to persistent storage
+        DataManager.save(lists: taskLists)
+        
+        // Post notification to ensure other views update
+        NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
     }
 
     // MARK: - Formatting/Color Helpers (Can be moved to extensions or kept here if only used here)
