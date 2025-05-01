@@ -2,11 +2,20 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) var systemColorScheme
     @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         NavigationView {
             Form {
+                Section(header: Text("Appearance")) {
+                    Toggle("Use System Settings", isOn: $themeManager.useSystemAppearance)
+                    
+                    if !themeManager.useSystemAppearance {
+                        Toggle("Dark Mode", isOn: $themeManager.isDarkMode)
+                    }
+                }
+                
                 Section(header: Text("App Theme Color")) {
                     VStack(alignment: .leading) {
                         Text("Preview")
@@ -49,6 +58,7 @@ struct SettingsView: View {
             .navigationBarItems(trailing: Button("Done") {
                 dismiss()
             })
+            .preferredColorScheme(themeManager.useSystemAppearance ? nil : (themeManager.isDarkMode ? .dark : .light))
         }
     }
 }

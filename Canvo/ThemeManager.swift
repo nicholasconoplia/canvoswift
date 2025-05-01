@@ -29,6 +29,18 @@ class ThemeManager: ObservableObject {
         }
     }
     
+    @Published var useSystemAppearance: Bool {
+        didSet {
+            UserDefaults.standard.set(useSystemAppearance, forKey: "useSystemAppearance")
+        }
+    }
+    
+    @Published var isDarkMode: Bool {
+        didSet {
+            UserDefaults.standard.set(isDarkMode, forKey: "isDarkMode")
+        }
+    }
+    
     init() {
         // First load saved values
         let savedHue = UserDefaults.standard.double(forKey: "themeHue")
@@ -58,6 +70,10 @@ class ThemeManager: ObservableObject {
         self.hue = initialHue
         self.saturation = initialSaturation
         self.lightness = initialLightness
+        
+        // Initialize appearance mode properties
+        self.useSystemAppearance = UserDefaults.standard.bool(forKey: "useSystemAppearance")
+        self.isDarkMode = UserDefaults.standard.bool(forKey: "isDarkMode")
     }
     
     private func updateThemeColor() {
@@ -68,5 +84,7 @@ class ThemeManager: ObservableObject {
         hue = 0.75 // Purple hue
         saturation = 0.6
         lightness = 0.6
+        useSystemAppearance = true
+        isDarkMode = false
     }
 } 

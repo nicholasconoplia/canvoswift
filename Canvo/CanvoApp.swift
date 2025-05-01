@@ -15,6 +15,7 @@ struct CanvoApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(themeManager)
+                .preferredColorScheme(themeManager.useSystemAppearance ? nil : (themeManager.isDarkMode ? .dark : .light))
         }
     }
 }
