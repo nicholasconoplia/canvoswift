@@ -10,6 +10,23 @@ import Alamofire
 import UIKit
 import Foundation
 
+// MARK: - Planner Items Models
+struct PlannerItem: Decodable {
+    let plannableId: String
+    let plannableType: String
+    let submissions: PlannerSubmission?
+    
+    enum CodingKeys: String, CodingKey {
+        case plannableId = "plannable_id"
+        case plannableType = "plannable_type"
+        case submissions
+    }
+}
+
+struct PlannerSubmission: Decodable {
+    let submitted: Bool
+}
+
 // MARK: - Submission Models
 struct Submission: Decodable {
     let workflowState: String?
@@ -33,14 +50,21 @@ class SubmissionStatusService {
         self.apiKey = apiKey
     }
     
-    /// Fetches submission data for a specific assignment
+    /// Fetches submission data for a specific assignment using the planner items API
     /// - Parameters:
     ///   - courseID: Canvas course ID
     ///   - assignmentID: Canvas assignment ID
     /// - Returns: Optional Submission object with status information
     func fetchSubmissionData(courseID: String, assignmentID: String) async -> Submission? {
         print("[DEBUG SubmissionService] Fetching submission for Course: \(courseID), Assignment: \(assignmentID)")
-        guard let url = URL(string: "\(apiURL)/api/v1/courses/\(courseID)/assignments/\(assignmentID)/submissions/self") else {
+        
+        // Calculate date from a week ago
+        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
+        let dateFormatter = ISO8601DateFormatter()
+        let startDate = dateFormatter.string(from: weekAgo)
+        
+        // Create URL for planner items API
+        guard let url = URL(string: "\(apiURL)/planner/items?start_date=\(startDate)&per_page=75") else {
             print("[DEBUG SubmissionService] Invalid URL generated for Assignment: \(assignmentID)")
             return nil
         }
@@ -63,9 +87,21 @@ class SubmissionStatusService {
                 return nil
             }
             
-            let decodedSubmission = try JSONDecoder().decode(Submission.self, from: data)
-            print("[DEBUG SubmissionService] Decoded Submission for \(assignmentID): \(decodedSubmission)")
-            return decodedSubmission
+            // Decode the planner items response
+            let plannerItems = try JSONDecoder().decode([PlannerItem].self, from: data)
+            
+            // Find the matching assignment in planner items
+            if let matchingItem = plannerItems.first(where: { $0.plannableId == assignmentID && $0.plannableType == "assignment" }) {
+                // Create a Submission object from the planner item data
+                return Submission(
+                    workflowState: matchingItem.submissions?.submitted == true ? "submitted" : "unsubmitted",
+                    submittedAt: nil, // We don't get this from planner items API
+                    attempt: matchingItem.submissions?.submitted == true ? 1 : 0 // Use 1 if submitted, 0 if not
+                )
+            }
+            
+            print("[DEBUG SubmissionService] No matching planner item found for Assignment: \(assignmentID)")
+            return nil
         } catch {
             print("[DEBUG SubmissionService] Error fetching/decoding submission for \(assignmentID): \(error)")
             return nil
@@ -82,11 +118,9 @@ class SubmissionStatusService {
             return false
         }
         
-        // Prioritize using attempts to determine submission status
-        let attempt = submission.attempt ?? 0
-        let isSubmitted = attempt > 0
-        
-        print("[DEBUG SubmissionService] Values - attempt: \(attempt). Result: \(isSubmitted)")
+        // Simply check if the workflow state indicates submission
+        let isSubmitted = submission.workflowState == "submitted"
+        print("[DEBUG SubmissionService] Values - workflowState: \(String(describing: submission.workflowState)). Result: \(isSubmitted)")
         return isSubmitted
     }
 }
@@ -782,7 +816,7 @@ struct CourseCardView: View {
                     .padding(.vertical, 8)
             } else {
                 ForEach(viewModel.filteredAssignments(for: course.id)) { assignment in
-                    AssignmentCardView(assignment: assignment)
+                    AssignmentCardView(assignment: assignment, viewModel: viewModel)
                         .padding(.bottom, 16)
                 }
             }
@@ -791,252 +825,6 @@ struct CourseCardView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
-    }
-}
-
-// MARK: - Assignment Card View
-struct AssignmentCardView: View {
-    let assignment: CanvasKitAssignment
-    @EnvironmentObject private var themeManager: ThemeManager
-    
-    @State private var showingListPicker = false
-    @State private var showingAlert = false
-    @State private var alertMessage = ""
-    
-    var body: some View {
-        // DEBUG: Print submission status when view is rendered
-        let _ = print("[DEBUG AssignmentCardView] Rendering card for '\(assignment.name)' (ID: \(assignment.id)) with status: \(assignment.submissionStatus)")
-        
-        VStack(alignment: .leading, spacing: 12) {
-            // Assignment name (without the submission status badge overlay)
-            Text(assignment.name)
-                .font(.headline)
-                .foregroundColor(.primary)
-            
-            // Tags row with submission status
-            HStack(spacing: 12) {
-                // Submission status badge
-                if assignment.submissionStatus.0 == "Submitted" {
-                    Label("Submitted", systemImage: "checkmark")
-                        .font(.caption)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color(.systemGray6).opacity(0.8).background(Color.green.opacity(0.5)))
-                        .foregroundColor(Color(.systemGray))
-                        .cornerRadius(16)
-                } else {
-                    Text("Not Submitted")
-                        .font(.caption)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color(.systemGray6).opacity(0.8).background(Color.red.opacity(0.5)))
-                        .foregroundColor(Color(.systemGray))
-                        .cornerRadius(16)
-                }
-                
-                // Assignment type tag
-                Text(assignment.assignmentType)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 12)
-                    .background(themeManager.themeColor)
-                    .cornerRadius(16)
-                
-                Spacer()
-            }
-            
-            // Due date row
-            HStack {
-                Text(assignment.formattedDueDate)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                if assignment.isDueToday {
-                    Text("Due today")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 12)
-                        .background(themeManager.themeColor)
-                        .cornerRadius(16)
-                } else if let daysFromNow = assignment.daysFromNow {
-                    if daysFromNow > 0 {
-                        Text("in \(daysFromNow) \(daysFromNow == 1 ? "day" : "days")")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .padding(.vertical, 4)
-                            .padding(.horizontal, 12)
-                            .background(themeManager.themeColor)
-                            .cornerRadius(16)
-                    } else if daysFromNow < 0 {
-                        Text("\(abs(daysFromNow)) \(abs(daysFromNow) == 1 ? "day" : "days") ago")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .padding(.vertical, 4)
-                            .padding(.horizontal, 12)
-                            .background(Color.red)
-                            .cornerRadius(16)
-                    }
-                }
-            }
-            
-            // Action buttons
-            HStack(spacing: 16) {
-                Button(action: {
-                    if let urlString = assignment.html_url, let url = URL(string: urlString) {
-                        UIApplication.shared.open(url)
-                    }
-                }) {
-                    Text("VIEW IN CANVAS")
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundColor(themeManager.themeColor)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity)
-                        .background(themeManager.themeColor.opacity(0.1))
-                        .cornerRadius(24)
-                }
-                
-                Button(action: {
-                    // Check if there are any lists first
-                    if let taskLists = UserDefaults.standard.codableObject(forKey: "taskLists", castTo: [TaskList].self), !taskLists.isEmpty {
-                        showingListPicker = true
-                    } else {
-                        // If no lists exist, create one and add the task directly
-                        createNewListWithAssignment()
-                    }
-                }) {
-                    Text("ADD TO LIST")
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity)
-                        .background(themeManager.themeColor)
-                        .cornerRadius(24)
-                }
-            }
-        }
-        .actionSheet(isPresented: $showingListPicker) {
-            // Create action sheet with all available task lists
-            createTaskListActionSheet()
-        }
-        .alert(isPresented: $showingAlert) {
-            Alert(
-                title: Text("Assignment Added"),
-                message: Text(alertMessage),
-                dismissButton: .default(Text("OK"))
-            )
-        }
-    }
-    
-    // Create action sheet with task lists
-    private func createTaskListActionSheet() -> ActionSheet {
-        var buttons: [ActionSheet.Button] = []
-        
-        if let taskLists = UserDefaults.standard.codableObject(forKey: "taskLists", castTo: [TaskList].self) {
-            // Add button for each task list
-            for (index, list) in taskLists.enumerated() {
-                buttons.append(.default(Text(list.name)) {
-                    addAssignmentToTaskList(listIndex: index)
-                })
-            }
-        }
-        
-        // Add button to create a new list
-        buttons.append(.default(Text("Create New List")) {
-            createNewListWithAssignment()
-        })
-        
-        // Add cancel button
-        buttons.append(.cancel())
-        
-        return ActionSheet(
-            title: Text("Select a List"),
-            message: Text("Choose where to add this assignment"),
-            buttons: buttons
-        )
-    }
-    
-    // Create a new list with this assignment
-    private func createNewListWithAssignment() {
-        // Create task from assignment
-        let newTask = createTaskFromAssignment()
-        
-        // Create new list with the assignment as first task
-        let newList = TaskList(name: "Canvas Assignments", tasks: [newTask])
-        
-        // Save to UserDefaults
-        if var existingLists = UserDefaults.standard.codableObject(forKey: "taskLists", castTo: [TaskList].self) {
-            existingLists.append(newList)
-            UserDefaults.standard.setCodableObject(existingLists, forKey: "taskLists")
-        } else {
-            UserDefaults.standard.setCodableObject([newList], forKey: "taskLists")
-        }
-        
-        // Show success feedback
-        provideSuccessFeedback(listName: "Canvas Assignments")
-    }
-    
-    // Create a Task object from the Canvas assignment
-    private func createTaskFromAssignment() -> Task {
-        // Parse the due_at string to a Date object
-        var dueDate: Date? = nil
-        if let dueAtString = assignment.due_at {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            
-            dueDate = formatter.date(from: dueAtString)
-            
-            // Try again without fractional seconds if initial parsing fails
-            if dueDate == nil {
-                formatter.formatOptions = [.withInternetDateTime]
-                dueDate = formatter.date(from: dueAtString)
-            }
-        }
-        
-        return Task(
-            name: assignment.name,
-            notes: "Canvas Assignment: \(assignment.assignmentType)\n\(assignment.html_url ?? "")",
-            isCompleted: assignment.submissionStatus.0 == "Submitted",
-            dueDate: dueDate,
-            priority: assignment.isDueToday ? .high : .medium
-        )
-    }
-    
-    // Add assignment to an existing task list
-    private func addAssignmentToTaskList(listIndex: Int) {
-        if var taskLists = UserDefaults.standard.codableObject(forKey: "taskLists", castTo: [TaskList].self) {
-            guard listIndex < taskLists.count else { return }
-            
-            // Create task from assignment
-            let newTask = createTaskFromAssignment()
-            
-            // Add to selected list
-            taskLists[listIndex].tasks.insert(newTask, at: 0)
-            
-            // Save the updated task lists
-            UserDefaults.standard.setCodableObject(taskLists, forKey: "taskLists")
-            
-            // Show success feedback
-            provideSuccessFeedback(listName: taskLists[listIndex].name)
-        }
-    }
-    
-    // Provide success feedback to the user
-    private func provideSuccessFeedback(listName: String) {
-        // Haptic feedback
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.success)
-        
-        // Alert message
-        alertMessage = "Assignment '\(assignment.name)' added to '\(listName)'"
-        showingAlert = true
     }
 }
 
@@ -1071,3 +859,4 @@ extension UserDefaults {
 }
 
 // Note: The Color extension with init(hex:) has been removed as it already exists in CanvasKit.swift
+

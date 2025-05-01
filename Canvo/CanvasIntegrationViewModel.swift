@@ -20,6 +20,8 @@ class CanvasIntegrationViewModel: ObservableObject {
     @Published var assignmentsByCourseId: [Int: [CanvasKitAssignment]] = [:]
     @Published var isApiKeyConnected: Bool = false
     @Published var fetchingAssignments: Set<Int> = [] // Track which courses are being fetched
+    @Published var submissionsByCourseId: [Int: [Int: CanvasSubmission]] = [:]
+    @Published var fetchingSubmissions: Set<Int> = []
     
     // University Selection
     @AppStorage("selectedUniversityName") var selectedUniversityName: String = UNIVERSITIES[0].name
@@ -143,6 +145,11 @@ class CanvasIntegrationViewModel: ObservableObject {
                 self.assignmentsByCourseId = savedAssignments
             }
             
+            if let submissionsData = UserDefaults.standard.data(forKey: "savedSubmissionsByCourseId"),
+               let savedSubmissions = try? JSONDecoder().decode([Int: [Int: CanvasSubmission]].self, from: submissionsData) {
+                self.submissionsByCourseId = savedSubmissions
+            }
+            
             // Load visible course IDs
             if let visibleCoursesData = UserDefaults.standard.data(forKey: "visibleCourseIds"),
                let savedVisibleCourses = try? JSONDecoder().decode([Int].self, from: visibleCoursesData) {
@@ -224,6 +231,10 @@ class CanvasIntegrationViewModel: ObservableObject {
             UserDefaults.standard.set(encodedAssignments, forKey: "savedAssignmentsByCourseId")
         }
         
+        if let encodedSubmissions = try? JSONEncoder().encode(self.submissionsByCourseId) {
+            UserDefaults.standard.set(encodedSubmissions, forKey: "savedSubmissionsByCourseId")
+        }
+        
         // Save visible course IDs
         if let encodedVisibleCourses = try? JSONEncoder().encode(self.visibleCourseIds) {
             UserDefaults.standard.set(encodedVisibleCourses, forKey: "visibleCourseIds")
@@ -259,6 +270,7 @@ class CanvasIntegrationViewModel: ObservableObject {
         // Remove from UserDefaults
         UserDefaults.standard.removeObject(forKey: "savedCourses")
         UserDefaults.standard.removeObject(forKey: "savedAssignmentsByCourseId")
+        UserDefaults.standard.removeObject(forKey: "savedSubmissionsByCourseId")
         UserDefaults.standard.removeObject(forKey: "isApiKeyConnected")
         UserDefaults.standard.removeObject(forKey: "visibleCourseIds")
         UserDefaults.standard.removeObject(forKey: "hasConfiguredVisibleCourses")
@@ -382,6 +394,7 @@ class CanvasIntegrationViewModel: ObservableObject {
         
         // Initialize assignments dictionary
         assignmentsByCourseId = [:]
+        submissionsByCourseId = [:] // Clear existing submissions
         
         // Create a dispatch group to wait for all fetches
         let dispatchGroup = DispatchGroup()
@@ -409,11 +422,13 @@ class CanvasIntegrationViewModel: ObservableObject {
                     switch result {
                     case .success(let assignments):
                         print("DEBUG: Successfully fetched \(assignments.count) assignments for course ID: \(courseId)")
-                        // Print status JUST before assigning to published property
-                        for assignment in assignments {
-                            print("[ViewModel DEBUG] Assignment '\(assignment.name)' (ID: \(assignment.id)) status before assignment: \(assignment.submissionStatus)")
-                        }
                         self.assignmentsByCourseId[courseId] = assignments
+                        
+                        // Immediately fetch submissions for this course's assignments
+                        if !assignments.isEmpty {
+                            self.fetchSubmissionsForCourse(courseId)
+                        }
+                        
                     case .failure(let error):
                         print("DEBUG: Failed to fetch assignments for course ID: \(courseId), error: \(error.localizedDescription)")
                         self.assignmentsByCourseId[courseId] = [] // Empty array on error
@@ -445,7 +460,7 @@ class CanvasIntegrationViewModel: ObservableObject {
                 self.prepareCourseSelection()
             }
 
-            print("////// End of refresh - Finished refreshing assignments //////") // Add end marker
+            print("////// End of refresh - Finished refreshing assignments //////")
         }
     }
     
@@ -573,5 +588,86 @@ class CanvasIntegrationViewModel: ObservableObject {
             
             return dateA < dateB
         }
+    }
+    
+    // Fetch submissions for a course
+    private func fetchSubmissionsForCourse(_ courseId: Int) {
+        guard let assignments = assignmentsByCourseId[courseId] else {
+            print("DEBUG: No assignments found for course \(courseId)")
+            return
+        }
+        
+        // Add course to fetching set
+        fetchingSubmissions.insert(courseId)
+        
+        // Get all assignment IDs for this course
+        let assignmentIds = assignments.map { $0.id }
+        
+        print("DEBUG: Fetching submissions for course \(courseId) with \(assignmentIds.count) assignments")
+        print("DEBUG: Assignment IDs: \(assignmentIds)")
+        
+        canvasKit?.fetchSubmissionsForAssignments(courseId: courseId, assignmentIds: assignmentIds) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                // Remove course from fetching set
+                self.fetchingSubmissions.remove(courseId)
+                
+                switch result {
+                case .success(let submissions):
+                    print("DEBUG: Successfully fetched \(submissions.count) submissions for course \(courseId)")
+                    
+                    // Log submission statuses
+                    submissions.forEach { (assignmentId, submission) in
+                        let status = SubmissionStatus(from: submission)
+                        print("DEBUG: Assignment \(assignmentId) status: \(status.displayText) (State: \(status.state), workflow_state: \(submission.workflowState))")
+                    }
+                    
+                    // Update submissions in state
+                    self.submissionsByCourseId[courseId] = submissions
+                    
+                    // Update assignment submission statuses
+                    if var courseAssignments = self.assignmentsByCourseId[courseId] {
+                        for i in 0..<courseAssignments.count {
+                            let assignmentId = courseAssignments[i].id
+                            let submission = submissions[assignmentId]
+                            let status = SubmissionStatus(from: submission)
+                            
+                            // Update the assignment's submission status
+                            courseAssignments[i].submissionStatus = (status.displayText, status.detail ?? "")
+                            print("DEBUG: Updated assignment \(assignmentId) status to: \(status.displayText)")
+                        }
+                        self.assignmentsByCourseId[courseId] = courseAssignments
+                    }
+                    
+                    // Save the updated data
+                    self.saveCanvasData()
+                    
+                    // Notify observers that data has changed
+                    self.objectWillChange.send()
+                    
+                case .failure(let error):
+                    print("DEBUG: Failed to fetch submissions for course \(courseId): \(error)")
+                    // Don't set error message to avoid disrupting the UI for a non-critical feature
+                }
+            }
+        }
+    }
+    
+    // Helper method to get submission status for an assignment
+    func submissionStatus(for assignment: CanvasKitAssignment) -> SubmissionStatus {
+        guard let courseId = courses.first(where: { assignmentsByCourseId[$0.id]?.contains { $0.id == assignment.id } ?? false })?.id else {
+            print("DEBUG: Could not find course ID for assignment \(assignment.id)")
+            return SubmissionStatus(from: nil)
+        }
+        
+        guard let submission = submissionsByCourseId[courseId]?[assignment.id] else {
+            print("DEBUG: No submission found for assignment \(assignment.id) in course \(courseId)")
+            return SubmissionStatus(from: nil)
+        }
+        
+        let status = SubmissionStatus(from: submission)
+        print("DEBUG: Assignment \(assignment.id) status: \(status.displayText) (State: \(status.state))")
+        return status
     }
 } 

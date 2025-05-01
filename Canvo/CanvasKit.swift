@@ -9,6 +9,33 @@ import Foundation
 import Alamofire
 import SwiftUI
 
+// MARK: - Errors
+enum CanvasKitError: Error {
+    case invalidURL
+    case networkError(Error)
+    case decodingError(Error)
+    case invalidResponse
+    case unauthorized
+    case notFound
+    
+    var localizedDescription: String {
+        switch self {
+        case .invalidURL:
+            return "Invalid Canvas URL"
+        case .networkError(let error):
+            return "Network error: \(error.localizedDescription)"
+        case .decodingError(let error):
+            return "Failed to decode response: \(error.localizedDescription)"
+        case .invalidResponse:
+            return "Invalid response from server"
+        case .unauthorized:
+            return "Unauthorized. Please check your API key"
+        case .notFound:
+            return "Resource not found"
+        }
+    }
+}
+
 // MARK: - Models
 
 struct CanvasKitCourse: Codable, Identifiable {
@@ -87,13 +114,14 @@ struct CanvasKitAssignment: Codable, Identifiable {
     let submission_types: [String]?
     let html_url: String?
     let quiz_id: Int?
+    let points_possible: Double?
     
     // Submission status information (status, detailed status)
     var submissionStatus: (String, String) = ("Not Submitted", "Not yet submitted")
     
     // Explicit Codable implementation to handle the submissionStatus tuple
     enum CodingKeys: String, CodingKey {
-        case id, name, due_at, submission_types, html_url, quiz_id
+        case id, name, due_at, submission_types, html_url, quiz_id, points_possible
         case submissionStatus // Add key for our tuple
     }
     
@@ -106,6 +134,7 @@ struct CanvasKitAssignment: Codable, Identifiable {
         submission_types = try container.decodeIfPresent([String].self, forKey: .submission_types)
         html_url = try container.decodeIfPresent(String.self, forKey: .html_url)
         quiz_id = try container.decodeIfPresent(Int.self, forKey: .quiz_id)
+        points_possible = try container.decodeIfPresent(Double.self, forKey: .points_possible)
 
         // Decode submissionStatus from an array, provide default if missing or invalid
         if let statusArray = try container.decodeIfPresent([String].self, forKey: .submissionStatus), statusArray.count == 2 {
@@ -125,9 +154,23 @@ struct CanvasKitAssignment: Codable, Identifiable {
         try container.encodeIfPresent(submission_types, forKey: .submission_types)
         try container.encodeIfPresent(html_url, forKey: .html_url)
         try container.encodeIfPresent(quiz_id, forKey: .quiz_id)
+        try container.encodeIfPresent(points_possible, forKey: .points_possible)
         
         // Encode submissionStatus as an array of two strings
         try container.encode([submissionStatus.0, submissionStatus.1], forKey: .submissionStatus)
+    }
+    
+    // Add a custom initializer for previews
+    init(id: Int, name: String, due_at: String? = nil, submission_types: [String]? = nil, 
+         html_url: String? = nil, quiz_id: Int? = nil, points_possible: Double? = nil) {
+        self.id = id
+        self.name = name
+        self.due_at = due_at
+        self.submission_types = submission_types
+        self.html_url = html_url
+        self.quiz_id = quiz_id
+        self.points_possible = points_possible
+        self.submissionStatus = ("Not Submitted", "Not yet submitted")
     }
     
     // Computed properties
@@ -592,5 +635,90 @@ extension Color {
             blue: Double(b) / 255,
             opacity: Double(a) / 255
         )
+    }
+}
+
+// MARK: - Submission Fetching
+extension CanvasKit {
+    /// Fetches submissions for multiple assignments in a course in a single API call
+    /// - Parameters:
+    ///   - courseId: The ID of the course
+    ///   - assignmentIds: Array of assignment IDs to fetch submissions for
+    ///   - completion: Completion handler with Result containing dictionary mapping assignment IDs to their submissions
+    func fetchSubmissionsForAssignments(courseId: Int, assignmentIds: [Int], completion: @escaping (Result<[Int: CanvasSubmission], Error>) -> Void) {
+        // Construct the URL with query parameters
+        var components = URLComponents(string: "\(baseURL)/api/v1/courses/\(courseId)/students/submissions")
+        
+        // Add query parameters
+        components?.queryItems = [
+            URLQueryItem(name: "student_ids[]", value: "self"),
+            URLQueryItem(name: "include[]", value: "submission_history"),
+            URLQueryItem(name: "include[]", value: "assignment"),
+            URLQueryItem(name: "per_page", value: "100")
+        ]
+        
+        // Add assignment IDs
+        assignmentIds.forEach { id in
+            components?.queryItems?.append(URLQueryItem(name: "assignment_ids[]", value: String(id)))
+        }
+        
+        guard let url = components?.url else {
+            print("DEBUG: Invalid URL constructed for submissions fetch")
+            completion(.failure(CanvasKitError.invalidURL))
+            return
+        }
+        
+        print("DEBUG: Fetching submissions from URL: \(url.absoluteString)")
+        print("DEBUG: Fetching submissions for assignments: \(assignmentIds)")
+        
+        // Create request with authorization header
+        var request = URLRequest(url: url)
+        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        // Make the request using Alamofire
+        AF.request(request)
+            .validate()
+            .responseData { response in
+                print("DEBUG: Submission response status: \(response.response?.statusCode ?? 0)")
+                
+                if let data = response.data, let str = String(data: data, encoding: .utf8) {
+                    print("DEBUG: Raw submission response: \(str.prefix(500))...")
+                }
+                
+                switch response.result {
+                case .success(let data):
+                    do {
+                        // Decode the array of submissions
+                        let submissions = try JSONDecoder().decode([CanvasSubmission].self, from: data)
+                        print("DEBUG: Successfully decoded \(submissions.count) submissions")
+                        
+                        // Create a dictionary mapping assignment IDs to their submissions
+                        let submissionsByAssignmentId = Dictionary(uniqueKeysWithValues:
+                            submissions.map { ($0.assignmentId, $0) }
+                        )
+                        
+                        // Log which assignments have submissions
+                        let submittedAssignments = submissionsByAssignmentId.keys.sorted()
+                        print("DEBUG: Found submissions for assignments: \(submittedAssignments)")
+                        
+                        // Log assignments that are missing submissions
+                        let missingSubmissions = Set(assignmentIds).subtracting(Set(submittedAssignments))
+                        if !missingSubmissions.isEmpty {
+                            print("DEBUG: Missing submissions for assignments: \(missingSubmissions)")
+                        }
+                        
+                        completion(.success(submissionsByAssignmentId))
+                    } catch {
+                        print("DEBUG: Failed to decode submissions: \(error)")
+                        if let data = response.data, let str = String(data: data, encoding: .utf8) {
+                            print("DEBUG: Failed to decode JSON: \(str)")
+                        }
+                        completion(.failure(error))
+                    }
+                case .failure(let error):
+                    print("DEBUG: Failed to fetch submissions: \(error)")
+                    completion(.failure(error))
+                }
+            }
     }
 } 
