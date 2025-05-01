@@ -642,6 +642,17 @@ struct CanvasIntegrationView: View {
 struct CourseSelectionModalView: View {
     @ObservedObject var viewModel: CanvasIntegrationViewModel
     @EnvironmentObject private var themeManager: ThemeManager
+    @State private var searchText: String = ""
+    
+    private var filteredCourses: [CanvasKitCourse] {
+        if searchText.isEmpty {
+            return viewModel.courses
+        } else {
+            return viewModel.courses.filter { course in
+                course.displayName.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
     
     var body: some View {
         NavigationView {
@@ -659,9 +670,22 @@ struct CourseSelectionModalView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(.systemBackground))
                 
+                // Search bar
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.gray)
+                    TextField("Search courses...", text: $searchText)
+                        .textFieldStyle(PlainTextFieldStyle())
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(10)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+                
                 // Course list with checkboxes
                 List {
-                    ForEach(viewModel.courses) { course in
+                    ForEach(filteredCourses) { course in
                         HStack {
                             // Course name
                             VStack(alignment: .leading, spacing: 4) {

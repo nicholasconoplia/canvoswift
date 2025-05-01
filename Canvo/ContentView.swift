@@ -539,7 +539,7 @@ struct ContentView: View {
         Button("ADD TASK") { submitNewTask() }
             .frame(maxWidth: .infinity)
             .padding()
-            .background(Color.purple)
+            .background(themeManager.themeColor)
             .foregroundColor(.white)
             .cornerRadius(10)
             .font(.headline)

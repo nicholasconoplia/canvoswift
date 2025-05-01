@@ -99,6 +99,19 @@ struct TasksView: View {
                             taskRow(for: $task, in: list)
                                 .padding(.leading) 
                         }
+                        .onDelete { indices in
+                            // Find the list index
+                            if let listIndex = taskLists.firstIndex(where: { $0.id == list.id }) {
+                                // Remove the tasks at the specified indices
+                                for index in indices.sorted(by: >) {
+                                    taskLists[listIndex].tasks.remove(at: index)
+                                }
+                                // Save changes to persistent storage
+                                DataManager.save(lists: taskLists)
+                                // Post notification to ensure other views update
+                                NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+                            }
+                        }
                     }
                 } label: {
                     // Make list name editable on long press
@@ -156,15 +169,27 @@ struct TasksView: View {
                     .contentShape(Rectangle())
                     .onTapGesture { }
                 } else {
-                    Text(list.name)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                        // Allow tapping just the text to edit
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            editedName = list.name
-                            isEditing = true
-                        }
+                    HStack(spacing: 8) {
+                        Text(list.name)
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        
+                        // Task count badge
+                        Text("\(list.tasks.count)")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.gray.opacity(0.7))
+                            .cornerRadius(10)
+                    }
+                    // Allow tapping just the text to edit
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        editedName = list.name
+                        isEditing = true
+                    }
                 }
             }
             // Add some padding to make it easier to tap the text vs the disclosure arrow
@@ -257,23 +282,6 @@ struct TasksView: View {
                 Label("Date", systemImage: "calendar")
             }
             .tint(.blue)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            // Delete Button
-            Button(role: .destructive) {
-                if let listIndex = taskLists.firstIndex(where: { $0.id == list.id }),
-                   let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == task.wrappedValue.id }) {
-                    taskLists[listIndex].tasks.remove(at: taskIndex)
-                    
-                    // Save the updated taskLists to persistent storage
-                    DataManager.save(lists: taskLists)
-                    
-                    // Post notification to ensure other views update
-                    NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
-                }
-            } label: {
-                Label("Delete", systemImage: "trash.fill")
-            }
         }
     }
 
