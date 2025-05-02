@@ -47,123 +47,51 @@ struct ContentView: View {
     // --- Body ---
     var body: some View {
         TabView(selection: $selectedTab) {
-            NavigationView {
-                VStack(spacing: 0) {
-                    // Tasks Content
-                    if selectedTab == 0 {
-                        // Tasks Content
-                        TasksView(
-                            showingSettings: $showingSettings,
-                            taskLists: $taskLists,
-                            isAddTaskExpanded: $isAddTaskExpanded,
-                            contextMenuTask: $contextMenuTask,
-                            contextMenuTaskListID: $contextMenuTaskListID,
-                            showingContextMenu: $showingContextMenu,
-                            showingPriorityPicker: $showingPriorityPicker,
-                            showingContextMenuDatePicker: $showingContextMenuDatePicker
-                        )
-                    } else if selectedTab == 1 {
-                        // Canvas Content
-                        CanvasIntegrationView()
-                    } else if selectedTab == 2 {
-                        // Wheel Spinner Content
-                        WheelSpinnerView(taskLists: $taskLists)
-                    } else {
-                        // Calendar Content
-                        CalendarView(taskLists: $taskLists)
+            ForEach(themeManager.tabItems.filter { $0.isVisible }.sorted(by: { $0.order < $1.order })) { item in
+                NavigationView {
+                    VStack(spacing: 0) {
+                        switch item.id {
+                        case 0:
+                            TasksView(
+                                showingSettings: $showingSettings,
+                                taskLists: $taskLists,
+                                isAddTaskExpanded: $isAddTaskExpanded,
+                                contextMenuTask: $contextMenuTask,
+                                contextMenuTaskListID: $contextMenuTaskListID,
+                                showingContextMenu: $showingContextMenu,
+                                showingPriorityPicker: $showingPriorityPicker,
+                                showingContextMenuDatePicker: $showingContextMenuDatePicker
+                            )
+                        case 1:
+                            CanvasIntegrationView()
+                        case 2:
+                            WheelSpinnerView(taskLists: $taskLists)
+                        case 3:
+                            CalendarView(taskLists: $taskLists)
+                        default:
+                            EmptyView()
+                        }
                     }
-                }
-                .navigationTitle("Canvo")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            showingSettings = true
-                        } label: {
-                            Image(systemName: "gear")
-                                .foregroundColor(themeManager.themeColor)
+                    .navigationTitle(item.name)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                showingSettings = true
+                            } label: {
+                                Image(systemName: "gear")
+                                    .foregroundColor(themeManager.themeColor)
+                            }
                         }
                     }
                 }
-            }
-            .tabItem {
-                Label("Tasks", systemImage: "checklist")
-            }
-            .tag(0)
-            
-            NavigationView {
-                VStack(spacing: 0) {
-                    if selectedTab == 1 {
-                        CanvasIntegrationView()
-                    }
+                .tabItem {
+                    Label(item.name, systemImage: item.icon)
                 }
-                .navigationTitle("Canvas")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) { 
-                        Button {
-                            showingSettings = true
-                        } label: {
-                            Image(systemName: "gear")
-                                .foregroundColor(themeManager.themeColor)
-                        }
-                    }
-                }
+                .tag(item.id)
             }
-            .tabItem {
-                Label("Canvas", systemImage: "square.and.pencil")
-            }
-            .tag(1)
-            
-            NavigationView {
-                VStack(spacing: 0) {
-                    if selectedTab == 2 {
-                        WheelSpinnerView(taskLists: $taskLists)
-                    }
-                }
-                .navigationTitle("Task Wheel")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) { 
-                        Button {
-                            showingSettings = true
-                        } label: {
-                            Image(systemName: "gear")
-                                .foregroundColor(themeManager.themeColor)
-                        }
-                    }
-                }
-            }
-            .tabItem {
-                Label("Wheel", systemImage: "circle.circle")
-            }
-            .tag(2)
-            
-            NavigationView {
-                VStack(spacing: 0) {
-                    if selectedTab == 3 {
-                        CalendarView(taskLists: $taskLists)
-                    }
-                }
-                .navigationTitle("Calendar")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) { 
-                        Button {
-                            showingSettings = true
-                        } label: {
-                            Image(systemName: "gear")
-                                .foregroundColor(themeManager.themeColor)
-                        }
-                    }
-                }
-            }
-            .tabItem {
-                Label("Calendar", systemImage: "calendar")
-            }
-            .tag(3)
         }
-        .tint(themeManager.themeColor) // Set tab bar and navigation tint
+        .tint(themeManager.themeColor)
         .sheet(isPresented: $showingSettings) {
             SettingsView()
         }

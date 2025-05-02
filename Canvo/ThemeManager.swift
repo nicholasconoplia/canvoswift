@@ -1,6 +1,14 @@
 import SwiftUI
 import Combine
 
+struct TabItem: Codable, Identifiable {
+    let id: Int
+    var name: String
+    var icon: String
+    var isVisible: Bool
+    var order: Int
+}
+
 class ThemeManager: ObservableObject {
     @Published var themeColor: Color {
         didSet {
@@ -41,6 +49,14 @@ class ThemeManager: ObservableObject {
         }
     }
     
+    @Published var tabItems: [TabItem] {
+        didSet {
+            if let encoded = try? JSONEncoder().encode(tabItems) {
+                UserDefaults.standard.set(encoded, forKey: "tabItems")
+            }
+        }
+    }
+    
     init() {
         // First load saved values
         let savedHue = UserDefaults.standard.double(forKey: "themeHue")
@@ -74,6 +90,20 @@ class ThemeManager: ObservableObject {
         // Initialize appearance mode properties
         self.useSystemAppearance = UserDefaults.standard.bool(forKey: "useSystemAppearance")
         self.isDarkMode = UserDefaults.standard.bool(forKey: "isDarkMode")
+        
+        // Initialize tab configuration
+        if let savedTabItems = UserDefaults.standard.data(forKey: "tabItems"),
+           let decodedItems = try? JSONDecoder().decode([TabItem].self, from: savedTabItems) {
+            self.tabItems = decodedItems
+        } else {
+            // Default tab configuration
+            self.tabItems = [
+                TabItem(id: 0, name: "Tasks", icon: "checklist", isVisible: true, order: 0),
+                TabItem(id: 1, name: "Canvas", icon: "square.and.pencil", isVisible: true, order: 1),
+                TabItem(id: 2, name: "Wheel", icon: "circle.circle", isVisible: true, order: 2),
+                TabItem(id: 3, name: "Calendar", icon: "calendar", isVisible: true, order: 3)
+            ]
+        }
     }
     
     private func updateThemeColor() {
@@ -86,5 +116,13 @@ class ThemeManager: ObservableObject {
         lightness = 0.6
         useSystemAppearance = true
         isDarkMode = false
+        
+        // Reset tab configuration
+        tabItems = [
+            TabItem(id: 0, name: "Tasks", icon: "checklist", isVisible: true, order: 0),
+            TabItem(id: 1, name: "Canvas", icon: "square.and.pencil", isVisible: true, order: 1),
+            TabItem(id: 2, name: "Wheel", icon: "circle.circle", isVisible: true, order: 2),
+            TabItem(id: 3, name: "Calendar", icon: "calendar", isVisible: true, order: 3)
+        ]
     }
 } 

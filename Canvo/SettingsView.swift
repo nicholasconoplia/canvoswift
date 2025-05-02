@@ -52,17 +52,44 @@ struct SettingsView: View {
                     }
                 }
                 
-                // Add other settings sections here
+                Section(header: Text("Tab Configuration")) {
+                    ForEach($themeManager.tabItems) { $item in
+                        HStack {
+                            Image(systemName: item.icon)
+                                .foregroundColor(themeManager.themeColor)
+                            
+                            Text(item.name)
+                            
+                            Spacer()
+                            
+                            Toggle("", isOn: $item.isVisible)
+                        }
+                    }
+                    .onMove { from, to in
+                        var updatedItems = themeManager.tabItems
+                        updatedItems.move(fromOffsets: from, toOffset: to)
+                        
+                        // Update order values
+                        for (index, var item) in updatedItems.enumerated() {
+                            item.order = index
+                            updatedItems[index] = item
+                        }
+                        
+                        themeManager.tabItems = updatedItems
+                    }
+                }
             }
             .navigationTitle("Settings")
             .navigationBarItems(trailing: Button("Done") {
                 dismiss()
             })
             .preferredColorScheme(themeManager.useSystemAppearance ? nil : (themeManager.isDarkMode ? .dark : .light))
+            .environment(\.editMode, .constant(.active))
         }
     }
 }
 
 #Preview {
     SettingsView()
+        .environmentObject(ThemeManager())
 } 
