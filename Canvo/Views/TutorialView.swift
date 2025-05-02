@@ -3,6 +3,7 @@ import SwiftUI
 struct TutorialView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject private var themeManager: ThemeManager
+    @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     
     // State to track which tutorial section is expanded
     @State private var expandedSection: TutorialSection? = .tasks
@@ -215,6 +216,27 @@ struct TutorialView: View {
                             }
                         }
                     }
+                    
+                    // Replay welcome animation button
+                    Button(action: {
+                        dismiss() // Dismiss the tutorial first
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            hasSeenTutorial = false // Reset the welcome state
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "arrow.clockwise.circle.fill")
+                                .font(.system(size: 20))
+                            Text("Replay Welcome Animation")
+                                .font(.headline)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(themeManager.themeColor)
+                        .cornerRadius(12)
+                    }
+                    .padding(.top, 8)
                 }
                 .padding()
             }

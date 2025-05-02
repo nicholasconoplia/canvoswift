@@ -48,78 +48,83 @@ struct ContentView: View {
 
     // --- Body ---
     var body: some View {
-        TabView(selection: $selectedTab) {
-            ForEach(themeManager.tabItems.filter { $0.isVisible }.sorted(by: { $0.order < $1.order })) { item in
-                NavigationView {
-                    VStack(spacing: 0) {
-                        switch item.id {
-                        case 0:
-                            TasksView(
-                                showingSettings: $showingSettings,
-                                taskLists: $taskLists,
-                                isAddTaskExpanded: $isAddTaskExpanded,
-                                contextMenuTask: $contextMenuTask,
-                                contextMenuTaskListID: $contextMenuTaskListID,
-                                showingContextMenu: $showingContextMenu,
-                                showingPriorityPicker: $showingPriorityPicker,
-                                showingContextMenuDatePicker: $showingContextMenuDatePicker
-                            )
-                        case 1:
-                            CanvasIntegrationView()
-                        case 2:
-                            WheelSpinnerView(taskLists: $taskLists)
-                        case 3:
-                            CalendarView(taskLists: $taskLists)
-                        default:
-                            EmptyView()
+        ZStack {
+            TabView(selection: $selectedTab) {
+                ForEach(themeManager.tabItems.filter { $0.isVisible }.sorted(by: { $0.order < $1.order })) { item in
+                    NavigationView {
+                        VStack(spacing: 0) {
+                            switch item.id {
+                            case 0:
+                                TasksView(
+                                    showingSettings: $showingSettings,
+                                    taskLists: $taskLists,
+                                    isAddTaskExpanded: $isAddTaskExpanded,
+                                    contextMenuTask: $contextMenuTask,
+                                    contextMenuTaskListID: $contextMenuTaskListID,
+                                    showingContextMenu: $showingContextMenu,
+                                    showingPriorityPicker: $showingPriorityPicker,
+                                    showingContextMenuDatePicker: $showingContextMenuDatePicker
+                                )
+                            case 1:
+                                CanvasIntegrationView()
+                            case 2:
+                                WheelSpinnerView(taskLists: $taskLists)
+                            case 3:
+                                CalendarView(taskLists: $taskLists)
+                            default:
+                                EmptyView()
+                            }
                         }
-                    }
-                    .navigationTitle(item.name)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            HStack(spacing: 16) {
-                                Button {
-                                    showingTutorial = true
-                                } label: {
-                                    Image(systemName: "questionmark.circle")
-                                        .foregroundColor(themeManager.themeColor)
-                                }
-                                
-                                Button {
-                                    showingSettings = true
-                                } label: {
-                                    Image(systemName: "gear")
-                                        .foregroundColor(themeManager.themeColor)
+                        .navigationTitle(item.name)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                HStack(spacing: 16) {
+                                    Button {
+                                        showingTutorial = true
+                                    } label: {
+                                        Image(systemName: "questionmark.circle")
+                                            .foregroundColor(themeManager.themeColor)
+                                    }
+                                    
+                                    Button {
+                                        showingSettings = true
+                                    } label: {
+                                        Image(systemName: "gear")
+                                            .foregroundColor(themeManager.themeColor)
+                                    }
                                 }
                             }
                         }
                     }
+                    .navigationViewStyle(.stack)
+                    .tabItem {
+                        Label(item.name, systemImage: item.icon)
+                    }
+                    .tag(item.id)
                 }
-                .navigationViewStyle(.stack)
-                .tabItem {
-                    Label(item.name, systemImage: item.icon)
+            }
+            .tint(themeManager.themeColor)
+            .sheet(isPresented: $showingSettings) {
+                SettingsView()
+            }
+            .sheet(isPresented: $showingTutorial) {
+                TutorialView()
+            }
+            // Add Task Date Picker Sheet
+            .sheet(isPresented: $showingDatePicker) {
+                datePickerSheet // Moved from TasksView
+            }
+            // Context Menu Date Picker Sheet
+            .sheet(isPresented: $showingContextMenuDatePicker) {
+                // Ensure we still have the task context when sheet appears
+                if let task = contextMenuTask, let listID = contextMenuTaskListID {
+                    contextMenuDatePickerSheet(taskBinding: taskBinding(taskID: task.id, listID: listID)) // Moved from TasksView
                 }
-                .tag(item.id)
             }
-        }
-        .tint(themeManager.themeColor)
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
-        }
-        .sheet(isPresented: $showingTutorial) {
-            TutorialView()
-        }
-        // Add Task Date Picker Sheet
-        .sheet(isPresented: $showingDatePicker) {
-            datePickerSheet // Moved from TasksView
-        }
-        // Context Menu Date Picker Sheet
-        .sheet(isPresented: $showingContextMenuDatePicker) {
-            // Ensure we still have the task context when sheet appears
-            if let task = contextMenuTask, let listID = contextMenuTaskListID {
-                contextMenuDatePickerSheet(taskBinding: taskBinding(taskID: task.id, listID: listID)) // Moved from TasksView
-            }
+            
+            // Welcome Overlay
+            WelcomeOverlayView()
         }
         // --- Overlays ---
         .overlay {
