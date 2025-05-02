@@ -11,6 +11,8 @@ import Security
 struct ContentView: View {
     // State for the Settings modal
     @State private var showingSettings = false
+    // State for the Tutorial modal
+    @State private var showingTutorial = false
     // State for the collapsible Add Task section
     @State private var isAddTaskExpanded = false
     // State for the new task details
@@ -76,15 +78,25 @@ struct ContentView: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {
-                            Button {
-                                showingSettings = true
-                            } label: {
-                                Image(systemName: "gear")
-                                    .foregroundColor(themeManager.themeColor)
+                            HStack(spacing: 16) {
+                                Button {
+                                    showingTutorial = true
+                                } label: {
+                                    Image(systemName: "questionmark.circle")
+                                        .foregroundColor(themeManager.themeColor)
+                                }
+                                
+                                Button {
+                                    showingSettings = true
+                                } label: {
+                                    Image(systemName: "gear")
+                                        .foregroundColor(themeManager.themeColor)
+                                }
                             }
                         }
                     }
                 }
+                .navigationViewStyle(.stack)
                 .tabItem {
                     Label(item.name, systemImage: item.icon)
                 }
@@ -94,6 +106,9 @@ struct ContentView: View {
         .tint(themeManager.themeColor)
         .sheet(isPresented: $showingSettings) {
             SettingsView()
+        }
+        .sheet(isPresented: $showingTutorial) {
+            TutorialView()
         }
         // Add Task Date Picker Sheet
         .sheet(isPresented: $showingDatePicker) {
