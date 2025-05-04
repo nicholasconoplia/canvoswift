@@ -670,4 +670,10 @@ class CanvasIntegrationViewModel: ObservableObject {
         print("DEBUG: Assignment \(assignment.id) status: \(status.displayText) (State: \(status.state))")
         return status
     }
+    
+    // MARK: - Course Selection
+    func selectCourse(_ courseId: Int?) {
+        selectedCourseId = courseId
+        objectWillChange.send()
+    }
 } 

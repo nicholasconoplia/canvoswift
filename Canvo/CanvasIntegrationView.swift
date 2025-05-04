@@ -233,47 +233,21 @@ struct CanvasIntegrationView: View {
         .sheet(isPresented: $viewModel.showingCourseSelectionModal) {
             CourseSelectionModalView(viewModel: viewModel)
         }
-        // Course filter action sheet
-        .actionSheet(isPresented: $showingCourseFilterMenu) {
-            var buttons: [ActionSheet.Button] = [
-                .default(Text("All Courses")) { viewModel.selectedCourseId = nil }
-            ]
-            
-            // Add buttons for each course
-            for course in viewModel.filteredCourses {
-                buttons.append(.default(Text(course.displayName)) { 
-                    viewModel.selectedCourseId = course.id 
-                })
+        // Course filter confirmation dialog
+        .confirmationDialog("Filter by Course", isPresented: $showingCourseFilterMenu, titleVisibility: .visible) {
+            Button("All Courses") { viewModel.selectCourse(nil) }
+            ForEach(viewModel.filteredCourses) { course in
+                Button(course.displayName) { viewModel.selectCourse(course.id) }
             }
-            
-            buttons.append(.cancel())
-            
-            return ActionSheet(
-                title: Text("Filter by Course"),
-                message: nil,
-                buttons: buttons
-            )
+            Button("Cancel", role: .cancel) {}
         }
-        // Assignment type filter action sheet
-        .actionSheet(isPresented: $showingTypeFilterMenu) {
-            var buttons: [ActionSheet.Button] = [
-                .default(Text("All Types")) { viewModel.selectedAssignmentType = nil }
-            ]
-            
-            // Add buttons for each assignment type
-            for type in viewModel.assignmentTypes {
-                buttons.append(.default(Text(type)) { 
-                    viewModel.selectedAssignmentType = type 
-                })
+        // Assignment type filter confirmation dialog
+        .confirmationDialog("Filter by Assignment Type", isPresented: $showingTypeFilterMenu, titleVisibility: .visible) {
+            Button("All Types") { viewModel.selectedAssignmentType = nil }
+            ForEach(viewModel.assignmentTypes, id: \.self) { type in
+                Button(type) { viewModel.selectedAssignmentType = type }
             }
-            
-            buttons.append(.cancel())
-            
-            return ActionSheet(
-                title: Text("Filter by Assignment Type"),
-                message: nil,
-                buttons: buttons
-            )
+            Button("Cancel", role: .cancel) {}
         }
     }
     
