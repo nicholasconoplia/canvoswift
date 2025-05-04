@@ -10,12 +10,24 @@ import SwiftUI
 @main
 struct CanvoApp: App {
     @StateObject private var themeManager = ThemeManager()
+    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+    @State private var showWelcome = true
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(themeManager)
-                .preferredColorScheme(themeManager.useSystemAppearance ? nil : (themeManager.isDarkMode ? .dark : .light))
+            ZStack {
+                if !hasSeenWelcome {
+                    WelcomeAnimationView(showWelcome: $showWelcome)
+                        .environmentObject(themeManager)
+                        .onDisappear {
+                            hasSeenWelcome = true
+                        }
+                } else {
+                    ContentView()
+                        .environmentObject(themeManager)
+                        .preferredColorScheme(themeManager.useSystemAppearance ? nil : (themeManager.isDarkMode ? .dark : .light))
+                }
+            }
         }
     }
 }

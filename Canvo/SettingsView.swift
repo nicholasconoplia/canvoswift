@@ -4,6 +4,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) var systemColorScheme
     @EnvironmentObject var themeManager: ThemeManager
+    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = true
     
     var body: some View {
         NavigationView {
@@ -76,6 +77,23 @@ struct SettingsView: View {
                         }
                         
                         themeManager.tabItems = updatedItems
+                    }
+                }
+                
+                Section(header: Text("Welcome Animation")) {
+                    Button(action: {
+                        hasSeenWelcome = false
+                        dismiss()
+                    }) {
+                        HStack {
+                            Image(systemName: "play.circle.fill")
+                                .foregroundColor(themeManager.themeColor)
+                            Text("Replay Welcome Animation")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.gray)
+                        }
                     }
                 }
             }

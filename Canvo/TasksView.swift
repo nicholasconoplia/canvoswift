@@ -22,6 +22,9 @@ struct TasksView: View {
     // State local to TasksView
     @State private var newListName: String = ""
     @State private var expandedListIDs: Set<UUID> = [] // Initialize here or in onAppear
+    @State private var deleteHeaderAlert = false
+    @State private var listToDelete: TaskList?
+    @State private var editMode: EditMode = .inactive
 
     // Custom initializer to handle initial expanded state if needed (can be simplified)
     init(showingSettings: Binding<Bool>, 
@@ -86,66 +89,62 @@ struct TasksView: View {
     /// The main list displaying TaskLists and their Tasks.
     private var taskListArea: some View {
         List {
-            // Use the binding $taskLists
             ForEach($taskLists) { $list in 
                 DisclosureGroup(isExpanded: isExpandedBinding(for: list.id)) {
-                    if list.tasks.isEmpty {
-                        Text("No tasks yet")
-                            .foregroundColor(.gray)
-                            .padding(.leading)
-                    } else {
-                        // Iterate over task indices to allow deletion/modification if needed
-                        ForEach($list.tasks) { $task in 
-                            taskRow(for: $task, in: list)
-                                .padding(.leading) 
+                    TaskListContentView(
+                        list: $list,
+                        taskLists: $taskLists,
+                        themeManager: themeManager,
+                        contextMenuTask: $contextMenuTask,
+                        contextMenuTaskListID: $contextMenuTaskListID,
+                        showingContextMenu: $showingContextMenu,
+                        showingPriorityPicker: $showingPriorityPicker,
+                        showingContextMenuDatePicker: $showingContextMenuDatePicker
+                    )
+                } label: {
+                    ListHeaderView(list: $list)
+                        .onLongPressGesture(minimumDuration: 0.5) {
+                            deleteHeaderAlert = true
+                            listToDelete = list
                         }
-                        .onDelete { indices in
-                            // Find the list index
-                            if let listIndex = taskLists.firstIndex(where: { $0.id == list.id }) {
-                                // Remove the tasks at the specified indices
-                                for index in indices.sorted(by: >) {
-                                    taskLists[listIndex].tasks.remove(at: index)
-                                }
-                                // Save changes to persistent storage
-                                DataManager.save(lists: taskLists)
-                                // Post notification to ensure other views update
-                                NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
-                            }
+                }
+                .alert("Delete List", isPresented: $deleteHeaderAlert) {
+                    Button("Cancel", role: .cancel) {}
+                    Button("Delete", role: .destructive) {
+                        if let listToDelete = listToDelete {
+                            deleteTaskList(listToDelete)
                         }
                     }
-                } label: {
-                    // Make list name editable on long press
-                    ListHeaderView(list: $list)
+                } message: {
+                    Text("Are you sure you want to delete this list and all its tasks? This action cannot be undone.")
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 15, bottom: 8, trailing: 15))
-                .contentShape(Rectangle()) // Make entire area tappable
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button(role: .destructive) {
-                        deleteTaskList(list)
-                    } label: {
-                        Label("Delete", systemImage: "trash.fill")
-                    }
-                }
+                .contentShape(Rectangle())
+            }
+            .onMove { from, to in
+                taskLists.move(fromOffsets: from, toOffset: to)
+                DataManager.save(lists: taskLists)
+                NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
             }
         }
         .listStyle(.plain)
         .refreshable {
-            // Explicitly refresh from DataManager
             refreshTaskLists()
-            
-            // Post notification to ensure other views update
             NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
         }
         .onAppear { 
-            // Force refresh when view appears
             refreshTaskLists()
-            // Initialize expanded IDs
             initializeExpandedIDs()
         }
         .onChange(of: taskLists) { _ in
-            // Only initialize missing IDs, don't reset existing ones
             updateExpandedIDs()
         }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                EditButton()
+            }
+        }
+        .environment(\.editMode, $editMode)
     }
 
     /// A view for the editable list header
@@ -197,91 +196,183 @@ struct TasksView: View {
         }
     }
 
-    /// A row representing a single Task in the list.
-    private func taskRow(for task: Binding<Task>, in list: TaskList) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: task.wrappedValue.isCompleted ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(task.wrappedValue.isCompleted ? themeManager.themeColor : .gray)
-                .font(.system(size: 20))
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    toggleTaskCompletion(taskID: task.wrappedValue.id, listID: list.id)
-                }
-                .padding(.leading, -8)
-            
-            // Make task name editable on tap
-            if task.wrappedValue.isEditing {
-                TextField("Task name", text: task.name, onCommit: {
-                    task.isEditing.wrappedValue = false
-                })
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .submitLabel(.done)
+    // New TaskListContentView to handle tasks separately
+    private struct TaskListContentView: View {
+        @Binding var list: TaskList
+        @Binding var taskLists: [TaskList]
+        @ObservedObject var themeManager: ThemeManager
+        @Binding var contextMenuTask: Task?
+        @Binding var contextMenuTaskListID: UUID?
+        @Binding var showingContextMenu: Bool
+        @Binding var showingPriorityPicker: Bool
+        @Binding var showingContextMenuDatePicker: Bool
+
+        var body: some View {
+            if list.tasks.isEmpty {
+                Text("No tasks yet")
+                    .foregroundColor(.gray)
+                    .padding(.leading)
             } else {
-                Text(task.wrappedValue.name)
-                    .onTapGesture {
-                        task.isEditing.wrappedValue = true
+                ForEach(Array(list.tasks.enumerated()), id: \.element.id) { index, _ in
+                    if index < list.tasks.count {
+                        TaskRowView(
+                            task: $list.tasks[index],
+                            list: list,
+                            taskLists: $taskLists,
+                            themeManager: themeManager,
+                            contextMenuTask: $contextMenuTask,
+                            contextMenuTaskListID: $contextMenuTaskListID,
+                            showingContextMenu: $showingContextMenu,
+                            showingPriorityPicker: $showingPriorityPicker,
+                            showingContextMenuDatePicker: $showingContextMenuDatePicker
+                        )
+                        .padding(.leading)
                     }
+                }
             }
-            
-            Spacer()
-            
-            // Display Priority Bubble (if set)
-            if let priority = task.wrappedValue.priority {
-                Text(priority.rawValue.uppercased())
-                    .font(.caption.weight(.bold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .foregroundColor(.white)
-                    .background(color(for: priority))
-                    .cornerRadius(6)
-            }
-            
-            // Display Due Date
-            if let dueDate = task.wrappedValue.dueDate {
-                Text(format(date: dueDate))
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.gray.opacity(0.2))
-                    .cornerRadius(8)
-            }
-            
-            // Context Menu Button
-            Button {
-                contextMenuTask = task.wrappedValue
-                contextMenuTaskListID = list.id
-                showingContextMenu = true
-            } label: {
-                Image(systemName: "ellipsis")
-                    .foregroundColor(.gray)
-                    .padding(.leading, 5)
-            }
-            .buttonStyle(.borderless)
         }
-        .padding(.leading, -4) // Move entire row closer to left edge
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            // Priority Button
-            Button {
-                contextMenuTask = task.wrappedValue
-                contextMenuTaskListID = list.id
-                showingContextMenu = false
-                showingPriorityPicker = true
-            } label: {
-                Label("Priority", systemImage: "flag.fill")
+    }
+
+    // New TaskRowView to handle individual task rows
+    private struct TaskRowView: View {
+        @Binding var task: Task
+        let list: TaskList
+        @Binding var taskLists: [TaskList]
+        @ObservedObject var themeManager: ThemeManager
+        @Binding var contextMenuTask: Task?
+        @Binding var contextMenuTaskListID: UUID?
+        @Binding var showingContextMenu: Bool
+        @Binding var showingPriorityPicker: Bool
+        @Binding var showingContextMenuDatePicker: Bool
+
+        var body: some View {
+            HStack(spacing: 12) {
+                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(task.isCompleted ? themeManager.themeColor : .gray)
+                    .font(.system(size: 20))
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        toggleTaskCompletion()
+                    }
+                    .padding(.leading, -8)
+                
+                if task.isEditing {
+                    TextField("Task name", text: $task.name, onCommit: {
+                        task.isEditing = false
+                    })
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .submitLabel(.done)
+                } else {
+                    Text(task.name)
+                        .onTapGesture {
+                            task.isEditing = true
+                        }
+                }
+                
+                Spacer()
+                
+                if let priority = task.priority {
+                    Text(priority.rawValue.uppercased())
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .foregroundColor(.white)
+                        .background(color(for: priority))
+                        .cornerRadius(6)
+                }
+                
+                if let dueDate = task.dueDate {
+                    Text(format(date: dueDate))
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.gray.opacity(0.2))
+                        .cornerRadius(8)
+                }
+                
+                Button {
+                    contextMenuTask = task
+                    contextMenuTaskListID = list.id
+                    showingContextMenu = true
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .foregroundColor(.gray)
+                        .padding(.leading, 5)
+                }
+                .buttonStyle(.borderless)
             }
-            .tint(.orange)
-            
-            // Date Button
-            Button {
-                contextMenuTask = task.wrappedValue
-                contextMenuTaskListID = list.id
-                showingContextMenu = false
-                showingContextMenuDatePicker = true
-            } label: {
-                Label("Date", systemImage: "calendar")
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button(role: .destructive) {
+                    deleteTask()
+                } label: {
+                    Label("Delete", systemImage: "trash.fill")
+                }
             }
-            .tint(.blue)
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button {
+                    contextMenuTask = task
+                    contextMenuTaskListID = list.id
+                    showingContextMenu = false
+                    showingPriorityPicker = true
+                } label: {
+                    Label("Priority", systemImage: "flag.fill")
+                }
+                .tint(.orange)
+                
+                Button {
+                    contextMenuTask = task
+                    contextMenuTaskListID = list.id
+                    showingContextMenu = false
+                    showingContextMenuDatePicker = true
+                } label: {
+                    Label("Date", systemImage: "calendar")
+                }
+                .tint(.blue)
+            }
+        }
+
+        private func toggleTaskCompletion() {
+            if let listIndex = taskLists.firstIndex(where: { $0.id == list.id }),
+               let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == task.id }) {
+                taskLists[listIndex].tasks[taskIndex].isCompleted.toggle()
+                DataManager.save(lists: taskLists)
+                NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+            }
+        }
+
+        private func deleteTask() {
+            if let listIndex = taskLists.firstIndex(where: { $0.id == list.id }) {
+                taskLists[listIndex].tasks.removeAll { $0.id == task.id }
+                DataManager.save(lists: taskLists)
+                NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+            }
+        }
+
+        private func color(for priority: Priority) -> Color {
+            switch priority {
+            case .high: return .red
+            case .medium: return .orange
+            case .low: return .green
+            }
+        }
+
+        private func format(date: Date) -> String {
+            let calendar = Calendar.current
+            let now = Date()
+            let startOfToday = calendar.startOfDay(for: now)
+            let startOfDueDate = calendar.startOfDay(for: date)
+            let components = calendar.dateComponents([.day], from: startOfToday, to: startOfDueDate)
+            guard let days = components.day else {
+                let formatter = DateFormatter()
+                formatter.dateStyle = .short
+                return formatter.string(from: date)
+            }
+            if days == 0 { return "Due Today" }
+            else if days == 1 { return "Due Tomorrow" }
+            else if days > 1 { return "in \(days) days" }
+            else if days == -1 { return "Due Yesterday" }
+            else { return "\(abs(days)) days ago" }
         }
     }
 
@@ -371,35 +462,6 @@ struct TasksView: View {
         NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
     }
     
-    /// Toggles the completion state of a task using its ID.
-    private func toggleTaskCompletion(taskID: UUID, listID: UUID) {
-         if let listIndex = taskLists.firstIndex(where: { $0.id == listID }),
-            let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == taskID }) {
-             // Mutate the binding
-             taskLists[listIndex].tasks[taskIndex].isCompleted.toggle()
-             
-             // Save changes to persistent storage
-             DataManager.save(lists: taskLists)
-             
-             // Post notification to ensure other views update
-             NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
-         }
-     }
-
-    /// Creates a Binding<Bool> to check/modify if a listID is in the local expanded set.
-    private func isExpandedBinding(for listID: UUID) -> Binding<Bool> {
-        Binding<Bool>(
-            get: { self.expandedListIDs.contains(listID) },
-            set: { isExpanding in
-                if isExpanding {
-                    self.expandedListIDs.insert(listID)
-                } else {
-                    self.expandedListIDs.remove(listID)
-                }
-            }
-        )
-    }
-
     /// Deletes a task list
     private func deleteTaskList(_ list: TaskList) {
         // Remove the list from the array
@@ -413,6 +475,20 @@ struct TasksView: View {
         
         // Post notification to ensure other views update
         NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+    }
+
+    /// Creates a Binding<Bool> to check/modify if a listID is in the local expanded set.
+    private func isExpandedBinding(for listID: UUID) -> Binding<Bool> {
+        Binding<Bool>(
+            get: { self.expandedListIDs.contains(listID) },
+            set: { isExpanding in
+                if isExpanding {
+                    self.expandedListIDs.insert(listID)
+                } else {
+                    self.expandedListIDs.remove(listID)
+                }
+            }
+        )
     }
 
     // MARK: - Formatting/Color Helpers (Can be moved to extensions or kept here if only used here)
