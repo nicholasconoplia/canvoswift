@@ -67,6 +67,14 @@ struct TasksView: View {
             }
             .ignoresSafeArea(.keyboard)
         }
+        .alert("Delete List?", isPresented: $deleteHeaderAlert, presenting: listToDelete) { list in
+            Button("Delete", role: .destructive) {
+                deleteTaskList(list)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { list in
+            Text("Are you sure you want to delete the list '\(list.name)'? This cannot be undone.")
+        }
     }
 
     // MARK: - Computed View Properties (Local to TasksView)
@@ -89,47 +97,33 @@ struct TasksView: View {
     /// The main list displaying TaskLists and their Tasks.
     private var taskListArea: some View {
         List {
-            ForEach($taskLists) { $list in 
-                DisclosureGroup(isExpanded: isExpandedBinding(for: list.id)) {
-                    TaskListContentView(
+            ForEach($taskLists) { $list in
+                let isExpanded = isExpandedBinding(for: list.id)
+                Section(header:
+                    ListHeaderView(
                         list: $list,
-                        taskLists: $taskLists,
-                        themeManager: themeManager,
-                        contextMenuTask: $contextMenuTask,
-                        contextMenuTaskListID: $contextMenuTaskListID,
-                        showingContextMenu: $showingContextMenu,
-                        showingPriorityPicker: $showingPriorityPicker,
-                        showingContextMenuDatePicker: $showingContextMenuDatePicker
-                    )
-                } label: {
-                    ListHeaderView(list: $list)
-                        .onLongPressGesture(minimumDuration: 0.5) {
+                        editMode: editMode,
+                        onDelete: {
                             deleteHeaderAlert = true
                             listToDelete = list
-                        }
-                }
-                .alert("Delete List", isPresented: $deleteHeaderAlert) {
-                    Button("Cancel", role: .cancel) {}
-                    Button("Delete", role: .destructive) {
-                        if let listToDelete = listToDelete {
-                            deleteTaskList(listToDelete)
-                        }
+                        },
+                        isExpanded: isExpanded
+                    )
+                ) {
+                    if isExpanded.wrappedValue {
+                        TaskListContentView(
+                            list: $list,
+                            taskLists: $taskLists,
+                            themeManager: themeManager,
+                            contextMenuTask: $contextMenuTask,
+                            contextMenuTaskListID: $contextMenuTaskListID,
+                            showingContextMenu: $showingContextMenu,
+                            showingPriorityPicker: $showingPriorityPicker,
+                            showingContextMenuDatePicker: $showingContextMenuDatePicker,
+                            editMode: editMode
+                        )
                     }
-                } message: {
-                    Text("Are you sure you want to delete this list and all its tasks? This action cannot be undone.")
                 }
-                .listRowInsets(EdgeInsets(top: 8, leading: 15, bottom: 8, trailing: 15))
-                .contentShape(Rectangle())
-            }
-            .onMove { from, to in
-                taskLists.move(fromOffsets: from, toOffset: to)
-                DataManager.save(lists: taskLists)
-                NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
-            }
-            .onDelete { indices in
-                // Show confirmation alert before deleting
-                listToDelete = taskLists[indices.first!]
-                deleteHeaderAlert = true
             }
         }
         .listStyle(.plain)
@@ -137,7 +131,7 @@ struct TasksView: View {
             refreshTaskLists()
             NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
         }
-        .onAppear { 
+        .onAppear {
             refreshTaskLists()
             initializeExpandedIDs()
         }
@@ -152,9 +146,41 @@ struct TasksView: View {
         .environment(\.editMode, $editMode)
     }
 
+    /// Move a task from one list to another (or within the same list) in edit mode
+    private func moveTask(from source: IndexSet, to destination: Int, in listID: UUID) {
+        guard let sourceListIdx = taskLists.firstIndex(where: { $0.id == listID }) else { return }
+        // Collect the tasks to move
+        let movingTasks = source.map { taskLists[sourceListIdx].tasks[$0] }
+        // Remove from source (must remove in reverse order to avoid index shifting)
+        for index in source.sorted(by: >) {
+            taskLists[sourceListIdx].tasks.remove(at: index)
+        }
+        // Insert at destination
+        if editMode == .active {
+            if let destListIdx = taskLists.firstIndex(where: { $0.id == listID }) {
+                // Insert all moving tasks at the destination index
+                for (offset, task) in movingTasks.enumerated() {
+                    let insertIndex = min(destination + offset, taskLists[destListIdx].tasks.count)
+                    taskLists[destListIdx].tasks.insert(task, at: insertIndex)
+                }
+            } else {
+                // Fallback: insert back to source list
+                for (offset, task) in movingTasks.enumerated() {
+                    let insertIndex = min(destination + offset, taskLists[sourceListIdx].tasks.count)
+                    taskLists[sourceListIdx].tasks.insert(task, at: insertIndex)
+                }
+            }
+        }
+        DataManager.save(lists: taskLists)
+        NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+    }
+
     /// A view for the editable list header
     private struct ListHeaderView: View {
         @Binding var list: TaskList
+        var editMode: EditMode = .inactive
+        var onDelete: (() -> Void)? = nil
+        @Binding var isExpanded: Bool
         @State private var isEditing = false
         @State private var editedName: String = ""
         
@@ -169,16 +195,24 @@ struct TasksView: View {
                     })
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .submitLabel(.done)
-                    // Prevent the disclosure group from collapsing when tapping the TextField
                     .contentShape(Rectangle())
                     .onTapGesture { }
                 } else {
+                    if editMode == .active, let onDelete = onDelete {
+                        Button(action: onDelete) {
+                            Image(systemName: "minus.circle.fill")
+                                .resizable()
+                                .frame(width: 28, height: 28)
+                                .foregroundColor(.red)
+                                .padding(4)
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                    }
                     HStack(spacing: 8) {
                         Text(list.name)
                             .font(.headline)
                             .foregroundColor(.primary)
-                        
-                        // Task count badge
                         Text("\(list.tasks.count)")
                             .font(.caption)
                             .fontWeight(.medium)
@@ -187,16 +221,20 @@ struct TasksView: View {
                             .padding(.vertical, 2)
                             .background(Color.gray.opacity(0.7))
                             .cornerRadius(10)
+                        Spacer()
+                        Button(action: { isExpanded.toggle() }) {
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .foregroundColor(.gray)
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    // Allow tapping just the text to edit
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        editedName = list.name
-                        isEditing = true
+                        isExpanded.toggle()
                     }
                 }
             }
-            // Add some padding to make it easier to tap the text vs the disclosure arrow
             .padding(.leading, 4)
         }
     }
@@ -211,6 +249,7 @@ struct TasksView: View {
         @Binding var showingContextMenu: Bool
         @Binding var showingPriorityPicker: Bool
         @Binding var showingContextMenuDatePicker: Bool
+        var editMode: EditMode
 
         var body: some View {
             if list.tasks.isEmpty {
@@ -229,39 +268,39 @@ struct TasksView: View {
                             contextMenuTaskListID: $contextMenuTaskListID,
                             showingContextMenu: $showingContextMenu,
                             showingPriorityPicker: $showingPriorityPicker,
-                            showingContextMenuDatePicker: $showingContextMenuDatePicker
+                            showingContextMenuDatePicker: $showingContextMenuDatePicker,
+                            editMode: editMode
                         )
                         .padding(.leading)
-                        .onDrag {
-                            let task = list.tasks[index]
-                            return NSItemProvider(object: task.id.uuidString as NSString)
+                        .if(editMode == .active) { view in
+                            view.onDrag {
+                                let task = list.tasks[index]
+                                return NSItemProvider(object: task.id.uuidString as NSString)
+                            }
                         }
                     }
                 }
                 .onMove { indices, newOffset in
-                    // Move tasks within the same header
                     list.tasks.move(fromOffsets: indices, toOffset: newOffset)
                     DataManager.save(lists: taskLists)
                     NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
                 }
-                .onInsert(of: ["public.text"]) { index, providers in
-                    // Support drag-and-drop between headers
-                    // Find the task being dragged from another list
-                    guard let provider = providers.first else { return }
-                    _ = provider.loadObject(ofClass: NSString.self) { (object, error) in
-                        guard let idString = object as? String, let taskID = UUID(uuidString: idString) else { return }
-                        DispatchQueue.main.async {
-                            // Find the source list and task
-                            for (listIdx, var srcList) in taskLists.enumerated() {
-                                if let taskIdx = srcList.tasks.firstIndex(where: { $0.id == taskID }) {
-                                    let movedTask = srcList.tasks.remove(at: taskIdx)
-                                    // Remove from source
-                                    taskLists[listIdx] = srcList
-                                    // Insert into destination
-                                    list.tasks.insert(movedTask, at: index)
-                                    DataManager.save(lists: taskLists)
-                                    NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
-                                    break
+                .if(editMode == .active) { view in
+                    view.onInsert(of: ["public.text"]) { index, providers in
+                        guard let provider = providers.first else { return }
+                        _ = provider.loadObject(ofClass: NSString.self) { (object, error) in
+                            guard let idString = object as? String, let taskID = UUID(uuidString: idString) else { return }
+                            DispatchQueue.main.async {
+                                for (listIdx, var srcList) in taskLists.enumerated() {
+                                    if let taskIdx = srcList.tasks.firstIndex(where: { $0.id == taskID }) {
+                                        let movedTask = srcList.tasks.remove(at: taskIdx)
+                                        taskLists[listIdx] = srcList
+                                        let insertIndex = min(index, taskLists[listIdx].tasks.count)
+                                        taskLists[listIdx].tasks.insert(movedTask, at: insertIndex)
+                                        DataManager.save(lists: taskLists)
+                                        NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+                                        break
+                                    }
                                 }
                             }
                         }
@@ -282,6 +321,7 @@ struct TasksView: View {
         @Binding var showingContextMenu: Bool
         @Binding var showingPriorityPicker: Bool
         @Binding var showingContextMenuDatePicker: Bool
+        var editMode: EditMode
 
         var body: some View {
             HStack(spacing: 12) {
@@ -590,4 +630,16 @@ struct TasksView: View {
         }
     }
     return TasksViewPreviewWrapper()
+}
+
+// MARK: - Conditional View Modifier Helper
+extension View {
+    @ViewBuilder
+    func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
 }
