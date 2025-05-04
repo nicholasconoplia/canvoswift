@@ -126,6 +126,11 @@ struct TasksView: View {
                 DataManager.save(lists: taskLists)
                 NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
             }
+            .onDelete { indices in
+                // Show confirmation alert before deleting
+                listToDelete = taskLists[indices.first!]
+                deleteHeaderAlert = true
+            }
         }
         .listStyle(.plain)
         .refreshable {
@@ -227,6 +232,39 @@ struct TasksView: View {
                             showingContextMenuDatePicker: $showingContextMenuDatePicker
                         )
                         .padding(.leading)
+                        .onDrag {
+                            let task = list.tasks[index]
+                            return NSItemProvider(object: task.id.uuidString as NSString)
+                        }
+                    }
+                }
+                .onMove { indices, newOffset in
+                    // Move tasks within the same header
+                    list.tasks.move(fromOffsets: indices, toOffset: newOffset)
+                    DataManager.save(lists: taskLists)
+                    NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+                }
+                .onInsert(of: ["public.text"]) { index, providers in
+                    // Support drag-and-drop between headers
+                    // Find the task being dragged from another list
+                    guard let provider = providers.first else { return }
+                    _ = provider.loadObject(ofClass: NSString.self) { (object, error) in
+                        guard let idString = object as? String, let taskID = UUID(uuidString: idString) else { return }
+                        DispatchQueue.main.async {
+                            // Find the source list and task
+                            for (listIdx, var srcList) in taskLists.enumerated() {
+                                if let taskIdx = srcList.tasks.firstIndex(where: { $0.id == taskID }) {
+                                    let movedTask = srcList.tasks.remove(at: taskIdx)
+                                    // Remove from source
+                                    taskLists[listIdx] = srcList
+                                    // Insert into destination
+                                    list.tasks.insert(movedTask, at: index)
+                                    DataManager.save(lists: taskLists)
+                                    NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+                                    break
+                                }
+                            }
+                        }
                     }
                 }
             }
