@@ -134,6 +134,7 @@ struct TasksView: View {
         .onAppear {
             refreshTaskLists()
             initializeExpandedIDs()
+            DataManager.startObservingICloudChanges()
         }
         .onChange(of: taskLists) { _ in
             updateExpandedIDs()

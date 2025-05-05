@@ -5,6 +5,8 @@ struct SettingsView: View {
     @Environment(\.colorScheme) var systemColorScheme
     @EnvironmentObject var themeManager: ThemeManager
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = true
+    @State private var jsonPreview: String = ""
+    @State private var isLoadingJSON = false
     
     var body: some View {
         NavigationView {
@@ -96,6 +98,26 @@ struct SettingsView: View {
                         }
                     }
                 }
+                
+                Section(header: Text("JSON File Preview (iCloud/Local)")) {
+                    if isLoadingJSON {
+                        ProgressView("Loading JSON...")
+                    } else {
+                        ScrollView(.horizontal) {
+                            ScrollView(.vertical) {
+                                Text(jsonPreview)
+                                    .font(.system(.body, design: .monospaced))
+                                    .padding(4)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        .frame(minHeight: 120, maxHeight: 300)
+                        Button("Reload JSON Preview") {
+                            loadJSONPreview()
+                        }
+                        .padding(.top, 4)
+                    }
+                }
             }
             .navigationTitle("Settings")
             .navigationBarItems(trailing: Button("Done") {
@@ -103,6 +125,27 @@ struct SettingsView: View {
             })
             .preferredColorScheme(themeManager.useSystemAppearance ? nil : (themeManager.isDarkMode ? .dark : .light))
             .environment(\.editMode, .constant(.active))
+            .onAppear {
+                loadJSONPreview()
+            }
+        }
+    }
+    
+    private func loadJSONPreview() {
+        isLoadingJSON = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fileURL = DataManager.iCloudArchiveURL ?? DataManager.archiveURL
+            var preview = ""
+            if let data = try? Data(contentsOf: fileURL),
+               let jsonString = String(data: data, encoding: .utf8) {
+                preview = jsonString
+            } else {
+                preview = "(No JSON file found at \(fileURL.lastPathComponent))"
+            }
+            DispatchQueue.main.async {
+                self.jsonPreview = preview
+                self.isLoadingJSON = false
+            }
         }
     }
 }
