@@ -121,28 +121,41 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarItems(trailing: Button("Done") {
+                print("DEBUG: Settings - Done button tapped")
                 dismiss()
             })
             .preferredColorScheme(themeManager.useSystemAppearance ? nil : (themeManager.isDarkMode ? .dark : .light))
             .environment(\.editMode, .constant(.active))
             .onAppear {
+                print("DEBUG: Settings - View appeared")
                 loadJSONPreview()
+            }
+            .onDisappear {
+                print("DEBUG: Settings - View disappeared")
             }
         }
     }
     
     private func loadJSONPreview() {
+        print("DEBUG: Settings - Starting JSON preview load")
         isLoadingJSON = true
         DispatchQueue.global(qos: .userInitiated).async {
+            print("DEBUG: Settings - Background thread: Loading JSON file")
             let fileURL = DataManager.iCloudArchiveURL ?? DataManager.archiveURL
             var preview = ""
-            if let data = try? Data(contentsOf: fileURL),
-               let jsonString = String(data: data, encoding: .utf8) {
-                preview = jsonString
-            } else {
-                preview = "(No JSON file found at \(fileURL.lastPathComponent))"
+            do {
+                let data = try Data(contentsOf: fileURL)
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    preview = jsonString
+                    print("DEBUG: Settings - JSON file loaded successfully")
+                }
+            } catch {
+                print("DEBUG: Settings - Error loading JSON: \(error)")
+                preview = "(Error loading JSON: \(error.localizedDescription))"
             }
+            
             DispatchQueue.main.async {
+                print("DEBUG: Settings - Updating UI with JSON preview")
                 self.jsonPreview = preview
                 self.isLoadingJSON = false
             }

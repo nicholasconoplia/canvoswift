@@ -12,12 +12,14 @@ struct TabItem: Codable, Identifiable {
 class ThemeManager: ObservableObject {
     @Published var themeColor: Color {
         didSet {
+            print("DEBUG: ThemeManager - themeColor changed")
             objectWillChange.send()
         }
     }
     
     @Published var hue: Double {
         didSet {
+            print("DEBUG: ThemeManager - hue changed to \(hue)")
             UserDefaults.standard.set(hue, forKey: "themeHue")
             updateThemeColor()
         }
@@ -25,6 +27,7 @@ class ThemeManager: ObservableObject {
     
     @Published var saturation: Double {
         didSet {
+            print("DEBUG: ThemeManager - saturation changed to \(saturation)")
             UserDefaults.standard.set(saturation, forKey: "themeSaturation")
             updateThemeColor()
         }
@@ -32,6 +35,7 @@ class ThemeManager: ObservableObject {
     
     @Published var lightness: Double {
         didSet {
+            print("DEBUG: ThemeManager - lightness changed to \(lightness)")
             UserDefaults.standard.set(lightness, forKey: "themeLightness")
             updateThemeColor()
         }
@@ -58,6 +62,7 @@ class ThemeManager: ObservableObject {
     }
     
     init() {
+        print("DEBUG: ThemeManager - Initializing")
         // First load saved values
         let savedHue = UserDefaults.standard.double(forKey: "themeHue")
         let savedSaturation = UserDefaults.standard.double(forKey: "themeSaturation")
@@ -87,6 +92,8 @@ class ThemeManager: ObservableObject {
         self.saturation = initialSaturation
         self.lightness = initialLightness
         
+        print("DEBUG: ThemeManager - Initialized with hue: \(initialHue), saturation: \(initialSaturation), lightness: \(initialLightness)")
+        
         // Initialize appearance mode properties
         self.useSystemAppearance = UserDefaults.standard.bool(forKey: "useSystemAppearance")
         self.isDarkMode = UserDefaults.standard.bool(forKey: "isDarkMode")
@@ -107,6 +114,7 @@ class ThemeManager: ObservableObject {
     }
     
     private func updateThemeColor() {
+        print("DEBUG: ThemeManager - Updating theme color")
         themeColor = Color(hue: hue, saturation: saturation, brightness: lightness)
     }
     
