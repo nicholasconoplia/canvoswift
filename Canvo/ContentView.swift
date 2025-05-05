@@ -107,9 +107,11 @@ struct ContentView: View {
             .tint(themeManager.themeColor)
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
+                    .environmentObject(themeManager)
             }
             .sheet(isPresented: $showingTutorial) {
                 TutorialView()
+                    .environmentObject(themeManager)
             }
             // Add Task Date Picker Sheet
             .sheet(isPresented: $showingDatePicker) {

@@ -85,6 +85,7 @@ struct WelcomeOverlayView: View {
         }
         .sheet(isPresented: $showTutorial) {
             TutorialView()
+                .environmentObject(themeManager)
         }
     }
 }
