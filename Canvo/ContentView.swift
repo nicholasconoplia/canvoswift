@@ -186,7 +186,8 @@ struct ContentView: View {
                 PriorityPickerView(
                     taskPriority: taskBinding(taskID: task.id, listID: listID).priority,
                     showingPriorityPicker: $showingPriorityPicker,
-                    showingContextMenu: $showingContextMenu
+                    showingContextMenu: $showingContextMenu,
+                    onSave: saveTaskLists
                 )
                 .transition(.scale.combined(with: .opacity))
                 .zIndex(2) // Ensure overlay is above dimming
@@ -568,7 +569,11 @@ struct ContentView: View {
                     "Select Due Date",
                     selection: Binding<Date>(
                         get: { taskBinding.wrappedValue.dueDate ?? Date() },
-                        set: { taskBinding.wrappedValue.dueDate = $0 }
+                        set: { 
+                            taskBinding.wrappedValue.dueDate = $0
+                            // Save changes immediately after setting the due date
+                            saveTaskLists()
+                        }
                     ),
                     displayedComponents: [.date]
                 )
@@ -583,6 +588,8 @@ struct ContentView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Clear") {
                         taskBinding.wrappedValue.dueDate = nil
+                        // Save changes after clearing the due date
+                        saveTaskLists()
                         dismissAllOverlays() // Use central dismiss
                     }
                 }
@@ -677,7 +684,9 @@ struct ContentView: View {
         contextMenuTaskListID = nil
 
         if let listIndex = taskLists.firstIndex(where: { $0.id == listID }) {
-            taskLists[listIndex].tasks.removeAll { $0.id == taskToDelete.id }
+            withAnimation {
+                taskLists[listIndex].tasks.removeAll { $0.id == taskToDelete.id }
+            }
             print("Deleted task '\(taskName)' from list '\(taskLists[listIndex].name)'")
         } else {
             print("Error: List not found during deletion.")
@@ -715,6 +724,9 @@ struct ContentView: View {
 
     /// Dismiss all relevant overlays
     private func dismissAllOverlays() {
+        // Save changes before dismissing overlays
+        saveTaskLists()
+        
         // Use animation to smoothly dismiss
         withAnimation {
             showingContextMenu = false

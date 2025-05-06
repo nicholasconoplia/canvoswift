@@ -2,6 +2,10 @@ import Foundation
 
 struct DataManager {
     // MARK: - iCloud Support
+    static var useCloudKitSync: Bool {
+        UserDefaults.standard.bool(forKey: "useCloudKitSync")
+    }
+
     static var iCloudDocumentsDirectory: URL? {
         FileManager.default.url(forUbiquityContainerIdentifier: nil)?.appendingPathComponent("Documents")
     }
@@ -15,7 +19,12 @@ struct DataManager {
 
     // MARK: - Load TaskLists from the JSON file (iCloud first, fallback to local)
     static func load() -> [TaskList] {
-        let fileURL = iCloudArchiveURL ?? archiveURL
+        let fileURL: URL
+        if useCloudKitSync, let iCloudURL = iCloudArchiveURL {
+            fileURL = iCloudURL
+        } else {
+            fileURL = archiveURL
+        }
         guard let data = try? Data(contentsOf: fileURL) else {
             print("Couldn't load data, returning default.")
             return [TaskList(name: "Sample List")] // Return a default if no file exists
@@ -35,11 +44,15 @@ struct DataManager {
     static func save(lists: [TaskList]) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
-        let fileURL = iCloudArchiveURL ?? archiveURL
-
-        // Ensure iCloud Documents directory exists
-        if let iCloudDir = iCloudDocumentsDirectory {
-            try? FileManager.default.createDirectory(at: iCloudDir, withIntermediateDirectories: true, attributes: nil)
+        let fileURL: URL
+        if useCloudKitSync, let iCloudURL = iCloudArchiveURL {
+            // Ensure iCloud Documents directory exists
+            if let iCloudDir = iCloudDocumentsDirectory {
+                try? FileManager.default.createDirectory(at: iCloudDir, withIntermediateDirectories: true, attributes: nil)
+            }
+            fileURL = iCloudURL
+        } else {
+            fileURL = archiveURL
         }
 
         do {
@@ -57,6 +70,7 @@ struct DataManager {
 
     @MainActor
     static func startObservingICloudChanges() {
+        guard useCloudKitSync else { return }
         guard metadataQuery == nil else { return } // Only start once
         let query = NSMetadataQuery()
         query.predicate = NSPredicate(format: "%K == %@", NSMetadataItemFSNameKey, "taskLists.json")

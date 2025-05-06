@@ -25,6 +25,9 @@ struct TasksView: View {
     @State private var deleteHeaderAlert = false
     @State private var listToDelete: TaskList?
     @State private var editMode: EditMode = .inactive
+    // --- Swipe menu state ---
+    @State private var openSwipeTaskID: UUID? = nil
+    @State private var swipeMenuTimer: Timer? = nil
 
     // Custom initializer to handle initial expanded state if needed (can be simplified)
     init(showingSettings: Binding<Bool>, 
@@ -120,7 +123,9 @@ struct TasksView: View {
                             showingContextMenu: $showingContextMenu,
                             showingPriorityPicker: $showingPriorityPicker,
                             showingContextMenuDatePicker: $showingContextMenuDatePicker,
-                            editMode: editMode
+                            editMode: editMode,
+                            openSwipeTaskID: $openSwipeTaskID,
+                            swipeMenuTimer: $swipeMenuTimer
                         )
                     }
                 }
@@ -135,6 +140,29 @@ struct TasksView: View {
             refreshTaskLists()
             initializeExpandedIDs()
             DataManager.startObservingICloudChanges()
+            
+            // Add observer for TaskListsUpdated notification
+            NotificationCenter.default.addObserver(
+                forName: Notification.Name("TaskListsUpdated"),
+                object: nil, 
+                queue: .main
+            ) { _ in
+                // Since TasksView is a struct, we don't need [weak self]
+                // Save taskLists to ensure changes are persisted
+                // Using DispatchQueue.main.async to ensure we're on the main thread
+                // when accessing taskLists
+                DispatchQueue.main.async {
+                    self.saveTaskListsToDataManager()
+                }
+            }
+        }
+        .onDisappear {
+            // Remove the observer when the view disappears
+            NotificationCenter.default.removeObserver(
+                self,
+                name: Notification.Name("TaskListsUpdated"),
+                object: nil
+            )
         }
         .onChange(of: taskLists) { _ in
             updateExpandedIDs()
@@ -191,6 +219,10 @@ struct TasksView: View {
                     TextField("List name", text: $editedName, onCommit: {
                         if !editedName.isEmpty {
                             list.name = editedName
+                            // Since we can't access the full taskLists array here,
+                            // we'll rely on the binding propagating changes back to the parent
+                            // where the taskLists will get saved
+                            NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
                         }
                         isEditing = false
                     })
@@ -251,6 +283,9 @@ struct TasksView: View {
         @Binding var showingPriorityPicker: Bool
         @Binding var showingContextMenuDatePicker: Bool
         var editMode: EditMode
+        // --- Swipe menu state ---
+        @Binding var openSwipeTaskID: UUID?
+        @Binding var swipeMenuTimer: Timer?
 
         var body: some View {
             if list.tasks.isEmpty {
@@ -270,7 +305,9 @@ struct TasksView: View {
                             showingContextMenu: $showingContextMenu,
                             showingPriorityPicker: $showingPriorityPicker,
                             showingContextMenuDatePicker: $showingContextMenuDatePicker,
-                            editMode: editMode
+                            editMode: editMode,
+                            openSwipeTaskID: $openSwipeTaskID,
+                            swipeMenuTimer: $swipeMenuTimer
                         )
                         .padding(.leading)
                         .if(editMode == .active) { view in
@@ -323,6 +360,9 @@ struct TasksView: View {
         @Binding var showingPriorityPicker: Bool
         @Binding var showingContextMenuDatePicker: Bool
         var editMode: EditMode
+        // --- Swipe menu state ---
+        @Binding var openSwipeTaskID: UUID?
+        @Binding var swipeMenuTimer: Timer?
 
         var body: some View {
             HStack(spacing: 12) {
@@ -338,6 +378,11 @@ struct TasksView: View {
                 if task.isEditing {
                     TextField("Task name", text: $task.name, onCommit: {
                         task.isEditing = false
+                        // Save changes after text editing is complete
+                        if let listIndex = taskLists.firstIndex(where: { $0.id == list.id }) {
+                            DataManager.save(lists: taskLists)
+                            NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+                        }
                     })
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .submitLabel(.done)
@@ -409,6 +454,42 @@ struct TasksView: View {
                 }
                 .tint(.blue)
             }
+            .onChange(of: openSwipeTaskID) { newValue in
+                if newValue == task.id {
+                    // Start timer to auto-dismiss after 3 seconds
+                    swipeMenuTimer?.invalidate()
+                    swipeMenuTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
+                        DispatchQueue.main.async {
+                            withAnimation {
+                                openSwipeTaskID = nil
+                            }
+                        }
+                    }
+                } else {
+                    swipeMenuTimer?.invalidate()
+                }
+            }
+            .onTapGesture {
+                // If the swipe menu is open for this row, close it on tap
+                if openSwipeTaskID == task.id {
+                    withAnimation {
+                        openSwipeTaskID = nil
+                    }
+                }
+            }
+            .onAppear {
+                // If this row is the open swipe row, ensure timer is running
+                if openSwipeTaskID == task.id {
+                    swipeMenuTimer?.invalidate()
+                    swipeMenuTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
+                        DispatchQueue.main.async {
+                            withAnimation {
+                                openSwipeTaskID = nil
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         private func toggleTaskCompletion() {
@@ -422,7 +503,9 @@ struct TasksView: View {
 
         private func deleteTask() {
             if let listIndex = taskLists.firstIndex(where: { $0.id == list.id }) {
-                taskLists[listIndex].tasks.removeAll { $0.id == task.id }
+                withAnimation {
+                    taskLists[listIndex].tasks.removeAll { $0.id == task.id }
+                }
                 DataManager.save(lists: taskLists)
                 NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
             }
@@ -472,6 +555,11 @@ struct TasksView: View {
     }
 
     // MARK: - Helper Methods (Local to TasksView)
+    
+    /// Helper method to save task lists to DataManager
+    private func saveTaskListsToDataManager() {
+        DataManager.save(lists: taskLists)
+    }
     
     /// Function to explicitly refresh task lists data from storage
     func refreshTaskLists() {

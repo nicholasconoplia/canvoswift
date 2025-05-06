@@ -5,6 +5,7 @@ struct SettingsView: View {
     @Environment(\.colorScheme) var systemColorScheme
     @EnvironmentObject var themeManager: ThemeManager
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = true
+    @AppStorage("useCloudKitSync") private var useCloudKitSync = true
     @State private var jsonPreview: String = ""
     @State private var isLoadingJSON = false
     
@@ -117,6 +118,11 @@ struct SettingsView: View {
                         }
                         .padding(.top, 4)
                     }
+                }
+                
+                Section(header: Text("Cloud Sync")) {
+                    Toggle("Enable iCloud/CloudKit Sync", isOn: $useCloudKitSync)
+                        .help("When off, your data is only stored locally on this device.")
                 }
             }
             .navigationTitle("Settings")
