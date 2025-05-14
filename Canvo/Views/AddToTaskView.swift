@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import UserNotifications
 
 struct AddToTaskView: View {
     let assignment: CanvasKitAssignment
@@ -335,6 +336,12 @@ struct AddToTaskView: View {
             let newList = TaskList(name: newHeaderName, tasks: [newTask])
             updatedLists.append(newList)
             print("DEBUG: Created new list '\(newHeaderName)' with task '\(newTask.name)'")
+        }
+        
+        // Schedule notification for the new task if it has a due date
+        if newTask.dueDate != nil {
+            NotificationManager.shared.scheduleNotifications(for: newTask)
+            print("DEBUG: Scheduled notifications for task '\(newTask.name)'")
         }
         
         // Save using DataManager

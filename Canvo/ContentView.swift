@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Security
+import UserNotifications
 
 struct ContentView: View {
     // State for the Settings modal
@@ -40,6 +41,8 @@ struct ContentView: View {
     @State private var showingPriorityPicker = false
     // State to track selected tab
     @State private var selectedTab: Int = 0
+    // Add a flag to prevent auto-dismissal
+    @State private var keepContextMenuVisible = false
 
     // MARK: - Environment
     
@@ -80,6 +83,24 @@ struct ContentView: View {
                         .toolbar {
                             ToolbarItem(placement: .navigationBarTrailing) {
                                 HStack(spacing: 16) {
+                                    if isDeveloperMode() {
+                                        // Test 5 AM notifications button
+                                        Button {
+                                            NotificationManager.shared.createDebugTaskForNotificationTesting()
+                                        } label: {
+                                            Image(systemName: "bell.badge.fill")
+                                                .foregroundColor(themeManager.themeColor)
+                                        }
+                                        
+                                        // Check pending notifications button
+                                        Button {
+                                            NotificationManager.shared.checkPendingNotifications()
+                                        } label: {
+                                            Image(systemName: "list.bullet.clipboard")
+                                                .foregroundColor(themeManager.themeColor)
+                                        }
+                                    }
+                                    
                                     Button {
                                         showingTutorial = true
                                     } label: {
@@ -150,15 +171,24 @@ struct ContentView: View {
                     showingContextMenu: $showingContextMenu,
                     onChangeDueDate: { 
                         showingContextMenu = false // Hide the context menu first
-                        showingContextMenuDatePicker = true 
+                        // Add a small delay before showing the date picker
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            showingContextMenuDatePicker = true
+                        }
                     },
                     onAddEditNotes: { 
                         showingContextMenu = false // Hide the context menu first
-                        showingNotesEditor = true 
+                        // Add a small delay before showing the notes editor
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            showingNotesEditor = true
+                        }
                     },
                     onChangePriority: { 
                         showingContextMenu = false // Hide the context menu first
-                        showingPriorityPicker = true 
+                        // Add a small delay before showing the priority picker
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            showingPriorityPicker = true
+                        }
                     },
                     onDelete: { 
                         deleteSelectedTask()
@@ -166,6 +196,17 @@ struct ContentView: View {
                 )
                 .transition(.scale.combined(with: .opacity))
                 .zIndex(2) // Ensure overlay is above dimming
+                .onAppear {
+                    print("Context menu appeared")
+                    // Prevent immediate auto-dismissal in CloudKit mode
+                    if UserDefaults.standard.bool(forKey: "useCloudKitSync") {
+                        keepContextMenuVisible = true
+                        // After a delay, reset flag to allow normal interaction
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            keepContextMenuVisible = false
+                        }
+                    }
+                }
             }
         }
         .overlay {
@@ -570,7 +611,17 @@ struct ContentView: View {
                     selection: Binding<Date>(
                         get: { taskBinding.wrappedValue.dueDate ?? Date() },
                         set: { 
+                            // Store previous due date to check if it changed
+                            let previousDueDate = taskBinding.wrappedValue.dueDate
+                            
+                            // Set the new due date
                             taskBinding.wrappedValue.dueDate = $0
+                            
+                            // Schedule notifications if due date changed and task is not completed
+                            if !taskBinding.wrappedValue.isCompleted {
+                                NotificationManager.shared.scheduleNotifications(for: taskBinding.wrappedValue)
+                            }
+                            
                             // Save changes immediately after setting the due date
                             saveTaskLists()
                         }
@@ -587,7 +638,14 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Clear") {
+                        // If there was a due date, remove all notifications
+                        if taskBinding.wrappedValue.dueDate != nil {
+                            NotificationManager.shared.removeNotifications(for: taskBinding.wrappedValue)
+                        }
+                        
+                        // Clear the due date
                         taskBinding.wrappedValue.dueDate = nil
+                        
                         // Save changes after clearing the due date
                         saveTaskLists()
                         dismissAllOverlays() // Use central dismiss
@@ -633,6 +691,11 @@ struct ContentView: View {
             taskLists[listIndex].tasks.insert(newTask, at: 0)
             print("Added task '\(newTaskName)' to list '\(taskLists[listIndex].name)'")
             
+            // Schedule notifications if the task has a due date
+            if newTask.dueDate != nil {
+                NotificationManager.shared.scheduleNotifications(for: newTask)
+            }
+            
             // Save task lists after adding a new task
             DataManager.save(lists: taskLists)
 
@@ -652,14 +715,43 @@ struct ContentView: View {
     private func taskBinding(taskID: UUID, listID: UUID) -> Binding<Task> {
         Binding<Task>(
             get: {
-                guard let listIndex = taskLists.firstIndex(where: { $0.id == listID }),
-                      let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == taskID })
-                else {
-                    fatalError("Task not found for binding!")
+                print("Getting task binding for task: \(taskID), list: \(listID)")
+                
+                // First try to find the task in the current state
+                if let listIndex = taskLists.firstIndex(where: { $0.id == listID }),
+                   let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == taskID }) {
+                    return taskLists[listIndex].tasks[taskIndex]
                 }
-                return taskLists[listIndex].tasks[taskIndex]
+                
+                // If not found, try reloading from storage (CloudKit might have updated)
+                print("Task not found in memory - attempting to reload from storage")
+                let freshLists = DataManager.load()
+                
+                if let listIndex = freshLists.firstIndex(where: { $0.id == listID }),
+                   let taskIndex = freshLists[listIndex].tasks.firstIndex(where: { $0.id == taskID }) {
+                    
+                    // Found in storage - update our in-memory copy and return
+                    print("Task found in storage - updating in-memory copy")
+                    DispatchQueue.main.async {
+                        self.taskLists = freshLists
+                    }
+                    return freshLists[listIndex].tasks[taskIndex]
+                }
+                
+                // Still not found - log and return placeholder
+                print("Warning: Task not found after checking storage - CloudKit sync may be in progress")
+                
+                // Dismiss context menu on next run loop
+                DispatchQueue.main.async {
+                    self.dismissAllOverlays()
+                }
+                
+                // Return a placeholder task to avoid crash
+                return Task(name: "Task not found", notes: nil, isCompleted: false, dueDate: nil, priority: nil, isEditing: false)
             },
             set: { updatedTask in
+                print("Setting updated task: \(updatedTask.name), ID: \(updatedTask.id)")
+                
                 guard let listIndex = taskLists.firstIndex(where: { $0.id == listID }),
                       let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == taskID })
                 else {
@@ -667,6 +759,12 @@ struct ContentView: View {
                     return
                 }
                 taskLists[listIndex].tasks[taskIndex] = updatedTask
+                
+                // Immediately save changes to ensure sync
+                if UserDefaults.standard.bool(forKey: "useCloudKitSync") {
+                    print("CloudKit enabled - immediately saving changes")
+                    DataManager.save(lists: taskLists)
+                }
             }
         )
     }
@@ -724,18 +822,43 @@ struct ContentView: View {
 
     /// Dismiss all relevant overlays
     private func dismissAllOverlays() {
+        print("Dismissing all overlays")
+        
+        // If keepContextMenuVisible is true, don't dismiss context menu
+        if keepContextMenuVisible && showingContextMenu {
+            print("Keeping context menu visible")
+            return
+        }
+        
         // Save changes before dismissing overlays
         saveTaskLists()
         
-        // Use animation to smoothly dismiss
-        withAnimation {
+        // Only animate dismissal if some overlay is actually showing
+        let shouldAnimate = showingContextMenu || 
+                            showingContextMenuDatePicker || 
+                            showingNotesEditor || 
+                            showingPriorityPicker || 
+                            isAddTaskExpanded
+        
+        // Close all overlays
+        if shouldAnimate {
+            withAnimation {
+                showingContextMenu = false
+                showingContextMenuDatePicker = false
+                showingNotesEditor = false
+                showingPriorityPicker = false
+                isAddTaskExpanded = false
+            }
+        } else {
+            // If no animation needed, still set all to false
             showingContextMenu = false
             showingContextMenuDatePicker = false
             showingNotesEditor = false
             showingPriorityPicker = false
             isAddTaskExpanded = false
         }
-        // Reset context task *after* animation if needed, or immediately
+        
+        // Clear context task after dismissing
         contextMenuTask = nil
         contextMenuTaskListID = nil
     }
@@ -743,7 +866,52 @@ struct ContentView: View {
     /// Save task lists to UserDefaults
     private func saveTaskLists() {
         DataManager.save(lists: taskLists)
+        
+        // Notify the NotificationManager to reschedule notifications 
+        // when task lists are saved
+        NotificationManager.shared.rescheduleAllNotifications(for: taskLists)
+        
         print("Task lists saved: \(taskLists.count) lists with \(taskLists.flatMap { $0.tasks }.count) total tasks")
+    }
+
+    /// Add this function to ContentView
+    private func testNotification() {
+        // Create and schedule a notification that will fire in 5 seconds
+        let content = UNMutableNotificationContent()
+        content.title = "Test Notification"
+        content.body = "This is a test notification to verify that notifications are working"
+        content.sound = .default
+        content.categoryIdentifier = "TASK_CATEGORY"
+        
+        // Trigger notification 5 seconds from now
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
+        
+        // Create request with unique identifier
+        let identifier = "test-notification-\(Date().timeIntervalSince1970)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        // Schedule notification
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error scheduling test notification: \(error.localizedDescription)")
+            } else {
+                print("Test notification scheduled to appear in 5 seconds")
+            }
+        }
+    }
+
+    /// Check if the app is in developer mode
+    private func isDeveloperMode() -> Bool {
+        // Check UserDefaults for developer mode flag
+        #if DEBUG
+        // In DEBUG builds, default to true so you always have access during development
+        return UserDefaults.standard.bool(forKey: "developerMode_enabled")
+        #else
+        // In RELEASE builds, require developer ID match for added security
+        let savedDevID = UserDefaults.standard.string(forKey: "developer_identifier") ?? ""
+        // Use your Apple ID or another identifier that only you would know
+        return savedDevID == "nickconoplia" // Replace with your identifier
+        #endif
     }
 }
 

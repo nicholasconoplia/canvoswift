@@ -84,4 +84,60 @@ struct DataManager {
         query.start()
         metadataQuery = query
     }
+    
+    // MARK: - CloudKit Data Backup
+    
+    /// Load data directly from CloudKit (without checking useCloudKitSync flag)
+    static func loadFromCloudKit() -> [TaskList]? {
+        guard let iCloudURL = iCloudArchiveURL else {
+            print("CloudKit URL not available")
+            return nil
+        }
+        
+        do {
+            let data = try Data(contentsOf: iCloudURL)
+            let decoder = JSONDecoder()
+            let decodedLists = try decoder.decode([TaskList].self, from: data)
+            print("CloudKit data loaded successfully")
+            return decodedLists
+        } catch {
+            print("Error loading CloudKit data: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    /// Load data directly from local storage (without checking useCloudKitSync flag)
+    static func loadFromLocalStorage() -> [TaskList]? {
+        do {
+            let data = try Data(contentsOf: archiveURL)
+            let decoder = JSONDecoder()
+            let decodedLists = try decoder.decode([TaskList].self, from: data)
+            print("Local data loaded successfully")
+            return decodedLists
+        } catch {
+            print("Error loading local data: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    /// Backup CloudKit data to local storage
+    static func backupCloudKitDataToLocal() -> Bool {
+        guard let cloudKitData = loadFromCloudKit() else {
+            print("No CloudKit data available to backup")
+            return false
+        }
+        
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        
+        do {
+            let data = try encoder.encode(cloudKitData)
+            try data.write(to: archiveURL, options: [.atomicWrite])
+            print("CloudKit data successfully backed up to local storage")
+            return true
+        } catch {
+            print("Error backing up CloudKit data: \(error.localizedDescription)")
+            return false
+        }
+    }
 } 

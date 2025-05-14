@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UserNotifications
 
 struct TasksView: View {
     @EnvironmentObject private var themeManager: ThemeManager
@@ -125,7 +126,8 @@ struct TasksView: View {
                             showingContextMenuDatePicker: $showingContextMenuDatePicker,
                             editMode: editMode,
                             openSwipeTaskID: $openSwipeTaskID,
-                            swipeMenuTimer: $swipeMenuTimer
+                            swipeMenuTimer: $swipeMenuTimer,
+                            refreshTaskLists: refreshTaskLists
                         )
                     }
                 }
@@ -286,6 +288,8 @@ struct TasksView: View {
         // --- Swipe menu state ---
         @Binding var openSwipeTaskID: UUID?
         @Binding var swipeMenuTimer: Timer?
+        // Function reference to refresh task lists
+        var refreshTaskLists: () -> Void
 
         var body: some View {
             if list.tasks.isEmpty {
@@ -307,7 +311,8 @@ struct TasksView: View {
                             showingContextMenuDatePicker: $showingContextMenuDatePicker,
                             editMode: editMode,
                             openSwipeTaskID: $openSwipeTaskID,
-                            swipeMenuTimer: $swipeMenuTimer
+                            swipeMenuTimer: $swipeMenuTimer,
+                            refreshTaskLists: refreshTaskLists
                         )
                         .padding(.leading)
                         .if(editMode == .active) { view in
@@ -363,6 +368,8 @@ struct TasksView: View {
         // --- Swipe menu state ---
         @Binding var openSwipeTaskID: UUID?
         @Binding var swipeMenuTimer: Timer?
+        // Function reference to refresh task lists
+        var refreshTaskLists: () -> Void
 
         var body: some View {
             HStack(spacing: 12) {
@@ -416,9 +423,26 @@ struct TasksView: View {
                 }
                 
                 Button {
-                    contextMenuTask = task
-                    contextMenuTaskListID = list.id
-                    showingContextMenu = true
+                    // First store the task and list ID
+                    let taskID = task.id
+                    let listID = list.id
+                    
+                    print("Task button tapped - ID: \(taskID), List ID: \(listID)")
+                    
+                    // If CloudKit is enabled, we need a different approach
+                    if UserDefaults.standard.bool(forKey: "useCloudKitSync") {
+                        print("CloudKit enabled - using direct approach instead of refresh")
+                        
+                        // Display context menu immediately using the current task
+                        contextMenuTask = task
+                        contextMenuTaskListID = list.id
+                        showingContextMenu = true
+                    } else {
+                        // If CloudKit is disabled, just show the menu immediately
+                        contextMenuTask = task
+                        contextMenuTaskListID = list.id
+                        showingContextMenu = true
+                    }
                 } label: {
                     Image(systemName: "ellipsis")
                         .foregroundColor(.gray)
@@ -496,6 +520,15 @@ struct TasksView: View {
             if let listIndex = taskLists.firstIndex(where: { $0.id == list.id }),
                let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == task.id }) {
                 taskLists[listIndex].tasks[taskIndex].isCompleted.toggle()
+                
+                // If task is now completed, remove notifications
+                if taskLists[listIndex].tasks[taskIndex].isCompleted {
+                    NotificationManager.shared.removeNotifications(for: taskLists[listIndex].tasks[taskIndex])
+                } else if taskLists[listIndex].tasks[taskIndex].dueDate != nil {
+                    // If task is marked incomplete and has a due date, reschedule notifications
+                    NotificationManager.shared.scheduleNotifications(for: taskLists[listIndex].tasks[taskIndex])
+                }
+                
                 DataManager.save(lists: taskLists)
                 NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
             }
@@ -503,11 +536,19 @@ struct TasksView: View {
 
         private func deleteTask() {
             if let listIndex = taskLists.firstIndex(where: { $0.id == list.id }) {
-                withAnimation {
-                    taskLists[listIndex].tasks.removeAll { $0.id == task.id }
+                // Get the task before removal so we can clear its notifications
+                if let taskToDelete = taskLists[listIndex].tasks.first(where: { $0.id == task.id }) {
+                    // Remove the notifications for this task
+                    NotificationManager.shared.removeNotifications(for: taskToDelete)
+                    
+                    // Now remove the task
+                    withAnimation {
+                        taskLists[listIndex].tasks.removeAll { $0.id == task.id }
+                    }
+                    
+                    DataManager.save(lists: taskLists)
+                    NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
                 }
-                DataManager.save(lists: taskLists)
-                NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
             }
         }
 
@@ -692,7 +733,6 @@ struct TasksView: View {
 }
 
 // --- Preview ---
-// Preview needs significant updates to provide necessary bindings
 #Preview {
     // Create a wrapper view to provide state for the preview
     struct TasksViewPreviewWrapper: View {
@@ -704,6 +744,11 @@ struct TasksView: View {
         @State var showingContextMenu = false
         @State var showingPriorityPicker = false
         @State var showingContextMenuDatePicker = false
+
+        // Dummy refresh function for preview
+        func dummyRefresh() {
+            // Just a placeholder that does nothing in preview
+        }
 
         var body: some View {
             TasksView(
