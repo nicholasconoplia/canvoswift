@@ -155,6 +155,9 @@ struct AssignmentCardView: View {
             AddToTaskView(assignment: assignment, isPresented: $showingAddTaskModal)
                 .environmentObject(themeManager)
         }
+        .onAppear {
+            addToDueSoonIfNeeded()
+        }
     }
     
     private func formatDueDate(_ dateString: String) -> String {
@@ -173,6 +176,81 @@ struct AssignmentCardView: View {
         let now = Date()
         let components = calendar.dateComponents([.day], from: now, to: dueDate)
         return components.day
+    }
+    
+    // MARK: - Auto Due Soon Check
+    private func shouldAddToDueSoon() -> Bool {
+        guard let dueDate = assignment.due_at,
+              let date = DateFormatter.iso8601Full.date(from: dueDate) else {
+            return false
+        }
+        
+        // Check if it's due within 7 days
+        let calendar = Calendar.current
+        let now = Date()
+        let components = calendar.dateComponents([.day], from: now, to: date)
+        guard let daysLeft = components.day else { return false }
+        
+        // Only add if:
+        // 1. Due within 7 days
+        // 2. Not already completed
+        // 3. Not past due
+        return daysLeft <= 7 && daysLeft >= 0 && !submissionStatus.state.isCompleted
+    }
+    
+    private func addToDueSoonIfNeeded() {
+        guard shouldAddToDueSoon() else { return }
+        
+        // Load current task lists
+        var taskLists = DataManager.load()
+        
+        // Check if task is already in any list
+        let isAlreadyAdded = taskLists.contains { list in
+            list.tasks.contains { task in
+                task.name == assignment.name
+            }
+        }
+        
+        if isAlreadyAdded {
+            return
+        }
+        
+        // Find or create "Due Soon" list
+        let dueSoonListName = "Due Soon"
+        if let dueSoonIndex = taskLists.firstIndex(where: { $0.name == dueSoonListName }) {
+            // Add to existing Due Soon list
+            let newTask = Task(
+                name: assignment.name,
+                notes: nil,
+                isCompleted: false,
+                dueDate: DateFormatter.iso8601Full.date(from: assignment.due_at ?? ""),
+                priority: .medium,
+                isEditing: false
+            )
+            taskLists[dueSoonIndex].tasks.append(newTask)
+        } else {
+            // Create new Due Soon list
+            let newTask = Task(
+                name: assignment.name,
+                notes: nil,
+                isCompleted: false,
+                dueDate: DateFormatter.iso8601Full.date(from: assignment.due_at ?? ""),
+                priority: .medium,
+                isEditing: false
+            )
+            let dueSoonList = TaskList(
+                id: UUID(),
+                name: dueSoonListName,
+                tasks: [newTask]
+            )
+            taskLists.append(dueSoonList)
+        }
+        
+        // Save updated lists
+        DataManager.save(lists: taskLists)
+        
+        // Notify about the update
+        NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
     }
 }
 
