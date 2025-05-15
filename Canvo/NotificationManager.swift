@@ -7,7 +7,7 @@ final class NotificationManager {
     static let shared = NotificationManager()
     
     // Notification intervals: days before due date when notifications should be shown
-    private let notificationIntervals = [0, 1, 4, 7, 10, 14]
+    private let notificationIntervals = [0, 1, 2, 3, 4, 5, 6, 7, 10, 14]
     
     // Create a notification category for tasks with actions
     private let taskCategoryIdentifier = "TASK_CATEGORY"
