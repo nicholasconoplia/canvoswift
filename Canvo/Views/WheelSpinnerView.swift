@@ -32,25 +32,9 @@ struct WheelSpinnerView: View {
                 } else {
                     Spacer(minLength: 20)
                     
-                    // Container to hold wheel and fixed pointer
-                    ZStack(alignment: .top) {
-                        // Wheel component (rotates)
-                        wheelView(size: min(geometry.size.width * 0.9, geometry.size.height * 0.6))
-                            .rotationEffect(.degrees(rotation))
-                            .padding(.top, 20)
-                        
-                        // Fixed pointer at top (doesn't rotate)
-                        Triangle()
-                            .fill(Color.white)
-                            .frame(width: 20, height: 20)
-                            .shadow(radius: 2)
-                            .background(
-                                Circle()
-                                    .fill(themeManager.themeColor)
-                                    .frame(width: 25, height: 25)
-                            )
-                            .offset(y: 10)
-                    }
+                    // Container to hold wheel
+                    wheelView(size: min(geometry.size.width * 0.9, geometry.size.height * 0.6))
+                        .rotationEffect(.degrees(rotation))
                     
                     Spacer(minLength: 40)
                     
@@ -117,20 +101,22 @@ struct WheelSpinnerView: View {
                 .frame(width: size, height: size)
                 .shadow(color: .black.opacity(0.2), radius: 5, x: 0, y: 2)
             
-            // Wheel sections
+            // Combined wheel sections and text
             ForEach(0..<incompleteTasks.count, id: \.self) { index in
                 let angle = Double(index) * (360.0 / Double(incompleteTasks.count))
-                // Alternate between theme color and darker theme color
-                let color = index % 2 == 0 ? 
-                    themeManager.themeColor.opacity(0.7) : 
-                    darkerThemeColor().opacity(0.85)
+                let sectionAngle = 360.0 / Double(incompleteTasks.count)
+                let midAngle = angle + (sectionAngle / 2)
                 
-                WheelSection(
+                // Create section
+                WheelSectionWithText(
+                    task: incompleteTasks[index],
                     startAngle: angle,
-                    endAngle: angle + (360.0 / Double(incompleteTasks.count)),
-                    color: color
+                    endAngle: angle + sectionAngle,
+                    color: index % 2 == 0 ? 
+                        themeManager.themeColor.opacity(0.7) : 
+                        darkerThemeColor().opacity(0.85),
+                    size: size
                 )
-                .frame(width: size, height: size)
             }
             
             // Center circle
@@ -150,18 +136,6 @@ struct WheelSpinnerView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                 )
-            
-            // Task labels around the wheel - now in a separate ZStack to improve rendering
-            ZStack {
-                ForEach(0..<incompleteTasks.count, id: \.self) { index in
-                    TaskLabelView(
-                        task: incompleteTasks[index],
-                        index: index,
-                        totalCount: incompleteTasks.count,
-                        size: size
-                    )
-                }
-            }
         }
     }
     
@@ -341,70 +315,46 @@ struct WheelSpinnerView: View {
     }
 }
 
-// Separate view for task labels to improve rendering and positioning
-struct TaskLabelView: View {
+// Combined view for wheel section and text
+struct WheelSectionWithText: View {
     let task: Task
-    let index: Int
-    let totalCount: Int
+    let startAngle: Double
+    let endAngle: Double
+    let color: Color
     let size: CGFloat
-    @EnvironmentObject private var themeManager: ThemeManager
     
     var body: some View {
-        // Calculate the section angle and midpoint
-        let sectionAngle = 360.0 / Double(totalCount)
-        let midAngle = Double(index) * sectionAngle + (sectionAngle / 2)
-        
-        // Convert to radians for positioning calculation
-        let midRadians = midAngle * .pi / 180
-        
-        // Calculate position - adjusted for better centering
-        let radius = size * 0.35
-        let xPosition = radius * cos(midRadians - .pi/2)
-        let yPosition = radius * sin(midRadians - .pi/2)
-        
-        // Determine if text should be flipped to always be readable
-        let textRotation = midAngle > 90 && midAngle < 270 ? midAngle + 180 : midAngle
-        
-        return Text(task.name)
-            .font(.caption)
-            .fontWeight(.bold)
-            .foregroundColor(.white)
-            .frame(width: size * 0.3, height: size * 0.15)
-            .lineLimit(2)
-            .multilineTextAlignment(.center)
-            .minimumScaleFactor(0.7)
-            .rotationEffect(.degrees(textRotation))
-            .position(
-                x: size / 2 + xPosition,
-                y: size / 2 + yPosition
+        ZStack {
+            // Section background
+            Sector(
+                startAngle: .degrees(startAngle),
+                endAngle: .degrees(endAngle)
             )
-    }
-}
-
-// Triangle shape for the wheel pointer
-struct Triangle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.closeSubpath()
-        return path
-    }
-}
-
-// Wheel section shape
-struct WheelSection: View {
-    var startAngle: Double
-    var endAngle: Double
-    var color: Color
-    
-    var body: some View {
-        Sector(
-            startAngle: .degrees(startAngle),
-            endAngle: .degrees(endAngle)
-        )
-        .fill(color)
+            .fill(color)
+            
+            // Text label
+            let midAngle = startAngle + ((endAngle - startAngle) / 2)
+            let midRadians = midAngle * .pi / 180
+            let radius = size * 0.35
+            let xPosition = radius * cos(midRadians - .pi/2)
+            let yPosition = radius * sin(midRadians - .pi/2)
+            let textRotation = midAngle > 90 && midAngle < 270 ? midAngle + 180 : midAngle
+            
+            Text(task.name)
+                .font(.caption)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .frame(width: size * 0.3, height: size * 0.15)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.7)
+                .rotationEffect(.degrees(textRotation))
+                .position(
+                    x: size / 2 + xPosition,
+                    y: size / 2 + yPosition
+                )
+        }
+        .frame(width: size, height: size)
     }
 }
 
