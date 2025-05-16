@@ -75,7 +75,7 @@ struct ContentView: View {
                             case 3:
                                 CalendarView(taskLists: $taskLists)
                             case 4:
-                                TimetableView()
+                                SchedulerView()
                             default:
                                 EmptyView()
                             }
