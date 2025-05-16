@@ -74,6 +74,8 @@ struct ContentView: View {
                                 WheelSpinnerView(taskLists: $taskLists)
                             case 3:
                                 CalendarView(taskLists: $taskLists)
+                            case 4:
+                                TimetableView()
                             default:
                                 EmptyView()
                             }
