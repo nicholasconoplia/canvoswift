@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCalendarsUsageDescription</key>
+	<string>We need access to your calendar to import busy time blocks for scheduling.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Access Calendar</string>
 	<key>NSUserNotificationUsageDescription</key>
 	<string>Canvo needs permission to send you task reminders for your due dates</string>
 	<key>UIBackgroundModes</key>

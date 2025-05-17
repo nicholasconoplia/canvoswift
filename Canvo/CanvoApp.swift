@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UserNotifications
+import EventKit
 
 @main
 struct CanvoApp: App {
