@@ -3,6 +3,7 @@ import SwiftUI
 struct MonthView: View {
     @Binding var selectedDate: Date
     let busyBlocks: [BusyBlock]
+    let taskSessions: [TaskSession]
     @EnvironmentObject private var themeManager: ThemeManager
     let taskLists: [TaskList]
     
@@ -58,6 +59,15 @@ struct MonthView: View {
         }
     }
     
+    private func hasScheduledSessions(on date: Date) -> Bool {
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        
+        return taskSessions.contains { session in
+            session.start >= startOfDay && session.start < endOfDay
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 8) {
             // Month navigation
@@ -101,7 +111,8 @@ struct MonthView: View {
                                     date: date,
                                     isSelected: calendar.isDate(date, inSameDayAs: selectedDate),
                                     hasBusyBlock: hasBusyBlock(on: date),
-                                    hasTasksDue: hasTasksDue(on: date)
+                                    hasTasksDue: hasTasksDue(on: date),
+                                    hasScheduledSessions: hasScheduledSessions(on: date)
                                 )
                                 .onTapGesture {
                                     selectedDate = date
@@ -139,6 +150,7 @@ struct DayCell: View {
     let isSelected: Bool
     let hasBusyBlock: Bool
     let hasTasksDue: Bool
+    let hasScheduledSessions: Bool
     @EnvironmentObject private var themeManager: ThemeManager
     
     private let calendar = Calendar.current
@@ -162,6 +174,11 @@ struct DayCell: View {
                     if hasTasksDue {
                         Circle()
                             .fill(Color.red)
+                            .frame(width: 4, height: 4)
+                    }
+                    if hasScheduledSessions {
+                        Circle()
+                            .fill(Color.blue)
                             .frame(width: 4, height: 4)
                     }
                 }

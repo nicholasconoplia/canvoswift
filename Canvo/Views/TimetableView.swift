@@ -1,14 +1,13 @@
 import SwiftUI
 
 struct TimetableView: View {
-    @StateObject private var workingHours = WorkingHours.load()
-    @State private var showingWorkingHoursSetup = false
     @State private var showingBusyTimeSetup = false
     @State private var showingTaskScheduler = false
+    @State private var showingWorkPreference = false
     @State private var selectedDate = Date()
     @State private var busyBlocks: [BusyBlock] = []
     @State private var taskSessions: [TaskSession] = []
-    @State private var isFirstLaunch: Bool = !UserDefaults.standard.bool(forKey: "HasSetWorkingHours")
+    @State private var isFirstPreference: Bool = !UserDefaults.standard.bool(forKey: "HasSetWorkPreference")
     @State private var selectedView = 0 // 0 for Calendar, 1 for Scheduler
     @State private var showAllTasks = false
     @EnvironmentObject private var themeManager: ThemeManager
@@ -58,8 +57,13 @@ struct TimetableView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             // Month calendar
-                            MonthView(selectedDate: $selectedDate, busyBlocks: allBlocks, taskLists: taskLists)
-                                .padding(.horizontal)
+                            MonthView(
+                                selectedDate: $selectedDate,
+                                busyBlocks: allBlocks,
+                                taskSessions: taskSessions,
+                                taskLists: taskLists
+                            )
+                            .padding(.horizontal)
                             
                             // Tasks section
                             VStack(alignment: .leading, spacing: 15) {
@@ -143,16 +147,20 @@ struct TimetableView: View {
                             }
                         }
                         
-                        Button(action: { showingWorkingHoursSetup = true }) {
-                            Label("Edit Working Hours", systemImage: "clock")
+                        Button(action: { showingWorkPreference = true }) {
+                            Label("Edit Work Preferences", systemImage: "clock")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
                 }
             }
-            .sheet(isPresented: $showingWorkingHoursSetup) {
-                WorkingHoursSetupView(workingHours: workingHours)
+            .sheet(isPresented: $showingWorkPreference) {
+                WorkTimePreferenceView()
+                    .onDisappear {
+                        UserDefaults.standard.set(true, forKey: "HasSetWorkPreference")
+                        isFirstPreference = false
+                    }
             }
             .sheet(isPresented: $showingBusyTimeSetup) {
                 NavigationView {
@@ -174,10 +182,8 @@ struct TimetableView: View {
             }
         }
         .onAppear {
-            if isFirstLaunch {
-                showingWorkingHoursSetup = true
-                UserDefaults.standard.set(true, forKey: "HasSetWorkingHours")
-                isFirstLaunch = false
+            if isFirstPreference {
+                showingWorkPreference = true
             }
             // Load task lists
             taskLists = DataManager.load()
