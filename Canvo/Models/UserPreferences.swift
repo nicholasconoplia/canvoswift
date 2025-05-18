@@ -50,12 +50,33 @@ struct UserPreferences: Codable {
         }
     }
     
+    // Task type-specific buffer times (in minutes)
+    struct BufferTimes: Codable {
+        var highPriority: TimeInterval = 15
+        var mediumPriority: TimeInterval = 30
+        var lowPriority: TimeInterval = 45
+        var assignment: TimeInterval = 30
+        var quiz: TimeInterval = 15
+        var general: TimeInterval = 30
+    }
+    
+    // Task distribution preferences
+    struct DistributionPreferences: Codable {
+        var preferEvenDistribution: Bool = true
+        var frontLoadTasks: Bool = false
+        var backLoadTasks: Bool = false
+        var maximumTasksPerTimeSlot: Int = 2
+        var preferredDaySpacing: Int = 1 // Minimum days between sessions of the same task
+    }
+    
     var workingHours: WorkingHours
     var preferredSessionDuration: TimeInterval // in minutes
     var workingDays: Set<Int> // 1 = Sunday, 2 = Monday, ..., 7 = Saturday
     var minimumBreakBetweenSessions: TimeInterval // in minutes
     var maximumSessionsPerDay: Int
     var workTimePreferences: Set<WorkTimePreference>
+    var bufferTimes: BufferTimes
+    var distributionPreferences: DistributionPreferences
     
     static var `default`: UserPreferences {
         let calendar = Calendar.current
@@ -68,7 +89,9 @@ struct UserPreferences: Codable {
             workingDays: Set(2...6), // Monday to Friday by default
             minimumBreakBetweenSessions: 15,
             maximumSessionsPerDay: 8,
-            workTimePreferences: [.morning, .afternoon] // Default to morning and afternoon
+            workTimePreferences: [.morning, .afternoon], // Default to morning and afternoon
+            bufferTimes: BufferTimes(),
+            distributionPreferences: DistributionPreferences()
         )
     }
     
@@ -87,6 +110,25 @@ struct UserPreferences: Codable {
             }
         }
         return false
+    }
+    
+    // Get buffer time based on task type and priority
+    func getBufferTime(priority: Priority?, isAssignment: Bool = false, isQuiz: Bool = false) -> TimeInterval {
+        if isQuiz {
+            return bufferTimes.quiz
+        } else if isAssignment {
+            return bufferTimes.assignment
+        } else if let priority = priority {
+            switch priority {
+            case .high:
+                return bufferTimes.highPriority
+            case .medium:
+                return bufferTimes.mediumPriority
+            case .low:
+                return bufferTimes.lowPriority
+            }
+        }
+        return bufferTimes.general
     }
 }
 

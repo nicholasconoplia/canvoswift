@@ -358,4 +358,4 @@ struct AssignmentCardView_Previews: PreviewProvider {
         )
         .environmentObject(ThemeManager())
     }
-} 
+}
