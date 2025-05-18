@@ -47,9 +47,9 @@ struct CalendarView: View {
                 
                 // Calendar grid
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 10) {
-                    ForEach(daysInMonth(), id: \.self) { date in
-                        if let date = date {
-                            DayCell(date: date,
+                    ForEach(daysInMonth(), id: \.id) { day in
+                        if let date = day.date {
+                            CalendarDayCell(date: date,
                                    isSelected: calendar.isDate(date, inSameDayAs: selectedDate ?? Date()),
                                    hasEvents: hasTasksDueOn(date: date))
                                 .onTapGesture {
@@ -134,8 +134,9 @@ struct CalendarView: View {
         }
     }
     
-    private func daysInMonth() -> [Date?] {
-        var days = [Date?]()
+    private func daysInMonth() -> [(id: Int, date: Date?)] {
+        var days = [(id: Int, date: Date?)]()
+        var dayCounter = 0
         
         // Get start of the month
         let components = calendar.dateComponents([.year, .month], from: currentMonth)
@@ -149,19 +150,22 @@ struct CalendarView: View {
         
         // Add empty cells for days before the start of month
         for _ in 1..<firstWeekday {
-            days.append(nil)
+            days.append((id: dayCounter, date: nil))
+            dayCounter += 1
         }
         
         // Add all days of the month
         for day in range {
             if let date = calendar.date(byAdding: .day, value: day - 1, to: startOfMonth) {
-                days.append(date)
+                days.append((id: dayCounter, date: date))
+                dayCounter += 1
             }
         }
         
         // Add empty cells to complete the last week if needed
         while days.count % 7 != 0 {
-            days.append(nil)
+            days.append((id: dayCounter, date: nil))
+            dayCounter += 1
         }
         
         return days
@@ -190,7 +194,7 @@ struct CalendarView: View {
 }
 
 // MARK: - Supporting Views
-struct DayCell: View {
+struct CalendarDayCell: View {
     let date: Date
     let isSelected: Bool
     let hasEvents: Bool
