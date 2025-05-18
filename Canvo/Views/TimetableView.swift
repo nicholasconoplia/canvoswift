@@ -4,10 +4,43 @@ struct TimetableView: View {
     @StateObject private var workingHours = WorkingHours.load()
     @State private var showingWorkingHoursSetup = false
     @State private var showingBusyTimeSetup = false
+    @State private var showingTaskScheduler = false
     @State private var selectedDate = Date()
     @State private var busyBlocks: [BusyBlock] = []
+    @State private var taskSessions: [TaskSession] = []
     @State private var isFirstLaunch: Bool = !UserDefaults.standard.bool(forKey: "HasSetWorkingHours")
     @State private var selectedView = 0 // 0 for Calendar, 1 for Scheduler
+    @State private var showAllTasks = false
+    @EnvironmentObject private var themeManager: ThemeManager
+    
+    // Add taskLists state
+    @State private var taskLists: [TaskList] = []
+    
+    private var allBlocks: [BusyBlock] {
+        // Convert TaskSessions to BusyBlocks for display
+        let sessionBlocks = taskSessions.map { session in
+            BusyBlock(
+                start: session.start,
+                end: session.end,
+                title: "\(session.taskTitle) (Session \(session.sessionNumber)/\(session.totalSessions))"
+            )
+        }
+        return busyBlocks + sessionBlocks
+    }
+    
+    private var tasksForSelectedDate: [Task] {
+        let calendar = Calendar.current
+        return taskLists.flatMap { $0.tasks }.filter { task in
+            guard let taskDueDate = task.dueDate else { return false }
+            return calendar.isDate(taskDueDate, inSameDayAs: selectedDate)
+        }
+    }
+    
+    private var allTasksSorted: [Task] {
+        return taskLists.flatMap { $0.tasks }
+            .filter { $0.dueDate != nil }
+            .sorted { ($0.dueDate ?? Date.distantFuture) < ($1.dueDate ?? Date.distantFuture) }
+    }
     
     var body: some View {
         NavigationView {
@@ -25,12 +58,60 @@ struct TimetableView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             // Month calendar
-                            MonthView(selectedDate: $selectedDate, busyBlocks: busyBlocks)
+                            MonthView(selectedDate: $selectedDate, busyBlocks: allBlocks, taskLists: taskLists)
                                 .padding(.horizontal)
                             
-                            // Day view
-                            DayView(date: selectedDate, busyBlocks: busyBlocks)
-                                .padding(.horizontal)
+                            // Tasks section
+                            VStack(alignment: .leading, spacing: 15) {
+                                HStack {
+                                    Text(showAllTasks ? "All Tasks" : dateFormatter.string(from: selectedDate))
+                                        .font(.headline)
+                                        .padding(.horizontal)
+                                    
+                                    Spacer()
+                                    
+                                    Button(action: { showAllTasks.toggle() }) {
+                                        Text(showAllTasks ? "View Day" : "View All")
+                                            .foregroundColor(themeManager.themeColor)
+                                    }
+                                    .padding(.horizontal)
+                                }
+                                
+                                if showAllTasks {
+                                    if allTasksSorted.isEmpty {
+                                        Text("No tasks found")
+                                            .foregroundColor(.gray)
+                                            .padding(.horizontal)
+                                    } else {
+                                        ForEach(allTasksSorted) { task in
+                                            TaskRow(task: task)
+                                                .padding(.horizontal)
+                                        }
+                                    }
+                                } else {
+                                    // Tasks due on selected date
+                                    if !tasksForSelectedDate.isEmpty {
+                                        Text("Tasks Due")
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                            .padding(.horizontal)
+                                        
+                                        ForEach(tasksForSelectedDate) { task in
+                                            TaskRow(task: task)
+                                                .padding(.horizontal)
+                                        }
+                                    }
+                                    
+                                    // Schedule for the day
+                                    Text("Schedule")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal)
+                                    
+                                    DayView(date: selectedDate, busyBlocks: allBlocks)
+                                        .padding(.horizontal)
+                                }
+                            }
                         }
                     }
                 } else {
@@ -56,6 +137,10 @@ struct TimetableView: View {
                             Button(action: { showingBusyTimeSetup = true }) {
                                 Label("Add Busy Time", systemImage: "plus.circle")
                             }
+                            
+                            Button(action: { showingTaskScheduler = true }) {
+                                Label("Schedule Tasks", systemImage: "calendar.badge.clock")
+                            }
                         }
                         
                         Button(action: { showingWorkingHoursSetup = true }) {
@@ -80,6 +165,13 @@ struct TimetableView: View {
                         )
                 }
             }
+            .sheet(isPresented: $showingTaskScheduler) {
+                TaskTimeAllocationView(
+                    tasks: allTasksSorted.filter { !$0.isCompleted },
+                    busyBlocks: busyBlocks,
+                    taskSessions: $taskSessions
+                )
+            }
         }
         .onAppear {
             if isFirstLaunch {
@@ -87,6 +179,18 @@ struct TimetableView: View {
                 UserDefaults.standard.set(true, forKey: "HasSetWorkingHours")
                 isFirstLaunch = false
             }
+            // Load task lists
+            taskLists = DataManager.load()
         }
+        // Listen for task list updates
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TaskListsUpdated"))) { _ in
+            taskLists = DataManager.load()
+        }
+    }
+    
+    private var dateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMMM d"
+        return formatter
     }
 } 

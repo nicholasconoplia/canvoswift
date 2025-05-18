@@ -3,6 +3,7 @@ import SwiftUI
 struct DayView: View {
     let date: Date
     let busyBlocks: [BusyBlock]
+    @EnvironmentObject private var themeManager: ThemeManager
     
     private let calendar = Calendar.current
     private let hourHeight: CGFloat = 60
@@ -25,42 +26,37 @@ struct DayView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(dateFormatter.string(from: date))
-                .font(.headline)
-                .padding()
-            
-            ScrollView {
-                ZStack(alignment: .topLeading) {
-                    // Time indicators and horizontal lines
-                    VStack(spacing: 0) {
-                        ForEach(hours, id: \.self) { hour in
-                            HStack(spacing: 0) {
-                                Text(String(format: "%d:00", hour))
-                                    .font(.caption)
-                                    .frame(width: timeWidth)
-                                
-                                Rectangle()
-                                    .fill(Color.gray.opacity(0.2))
-                                    .frame(height: 1)
-                            }
-                            .frame(height: hourHeight)
+        ScrollView {
+            ZStack(alignment: .topLeading) {
+                // Time indicators and horizontal lines
+                VStack(spacing: 0) {
+                    ForEach(hours, id: \.self) { hour in
+                        HStack(spacing: 0) {
+                            Text(String(format: "%d:00", hour))
+                                .font(.caption)
+                                .frame(width: timeWidth)
+                            
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(height: 1)
                         }
-                    }
-                    
-                    // Current time indicator
-                    if calendar.isDateInToday(date) {
-                        CurrentTimeIndicator()
-                            .offset(y: currentTimeOffset)
-                    }
-                    
-                    // Busy blocks
-                    ForEach(filteredBusyBlocks) { block in
-                        BusyBlockView(block: block)
-                            .offset(x: timeWidth, y: timeOffset(for: block.start))
+                        .frame(height: hourHeight)
                     }
                 }
+                
+                // Current time indicator
+                if calendar.isDateInToday(date) {
+                    CurrentTimeIndicator()
+                        .offset(y: currentTimeOffset)
+                }
+                
+                // Busy blocks
+                ForEach(filteredBusyBlocks) { block in
+                    BusyBlockView(block: block)
+                        .offset(x: timeWidth, y: timeOffset(for: block.start))
+                }
             }
+            .frame(minHeight: CGFloat(hours.count) * hourHeight)
         }
         .background(Color(.systemBackground))
         .cornerRadius(12)
@@ -82,15 +78,16 @@ struct DayView: View {
 
 struct CurrentTimeIndicator: View {
     private let timeWidth: CGFloat = 60
+    @EnvironmentObject private var themeManager: ThemeManager
     
     var body: some View {
         HStack(spacing: 0) {
             Circle()
-                .fill(Color.red)
+                .fill(themeManager.themeColor)
                 .frame(width: 8, height: 8)
             
             Rectangle()
-                .fill(Color.red)
+                .fill(themeManager.themeColor)
                 .frame(height: 1)
         }
         .padding(.leading, timeWidth - 4)
@@ -99,6 +96,7 @@ struct CurrentTimeIndicator: View {
 
 struct BusyBlockView: View {
     let block: BusyBlock
+    @EnvironmentObject private var themeManager: ThemeManager
     private let calendar = Calendar.current
     
     private var duration: TimeInterval {
@@ -130,7 +128,7 @@ struct BusyBlockView: View {
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: height)
-        .background(Color.accentColor)
+        .background(themeManager.themeColor)
         .cornerRadius(8)
     }
 } 

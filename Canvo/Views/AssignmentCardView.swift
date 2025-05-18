@@ -195,7 +195,12 @@ struct AssignmentCardView: View {
         // 1. Due within 7 days
         // 2. Not already completed
         // 3. Not past due
-        return daysLeft <= 7 && daysLeft >= 0 && !submissionStatus.state.isCompleted
+        // 4. Not submitted or graded
+        return daysLeft <= 7 && 
+               daysLeft >= 0 && 
+               !submissionStatus.state.isCompleted &&
+               submissionStatus.state != .submitted &&
+               submissionStatus.state != .graded
     }
     
     private func addToDueSoonIfNeeded() {

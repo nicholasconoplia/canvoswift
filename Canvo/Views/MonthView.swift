@@ -3,6 +3,8 @@ import SwiftUI
 struct MonthView: View {
     @Binding var selectedDate: Date
     let busyBlocks: [BusyBlock]
+    @EnvironmentObject private var themeManager: ThemeManager
+    let taskLists: [TaskList]
     
     private let calendar = Calendar.current
     private let daysInWeek = ["M", "Tu", "W", "Th", "F", "Sa", "Su"]
@@ -49,36 +51,45 @@ struct MonthView: View {
         }
     }
     
+    private func hasTasksDue(on date: Date) -> Bool {
+        return taskLists.flatMap { $0.tasks }.contains { task in
+            guard let taskDueDate = task.dueDate else { return false }
+            return calendar.isDate(taskDueDate, inSameDayAs: date)
+        }
+    }
+    
     var body: some View {
-        VStack(spacing: 0) {
-            // Month and Year
+        VStack(spacing: 8) {
+            // Month navigation
             HStack {
-                Text(monthTitle)
-                    .font(.title2)
-                    .fontWeight(.bold)
+                Button(action: previousMonth) {
+                    Image(systemName: "chevron.left")
+                        .foregroundColor(themeManager.themeColor)
+                }
+                
                 Spacer()
-                HStack(spacing: 20) {
-                    Button(action: previousMonth) {
-                        Image(systemName: "chevron.left")
-                    }
-                    Button(action: nextMonth) {
-                        Image(systemName: "chevron.right")
-                    }
+                
+                Text(monthTitle)
+                    .font(.headline)
+                
+                Spacer()
+                
+                Button(action: nextMonth) {
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(themeManager.themeColor)
                 }
             }
             .padding(.horizontal)
-            .padding(.vertical, 8)
             
-            // Days of week
-            HStack(spacing: 0) {
+            // Days of week header
+            HStack {
                 ForEach(daysInWeek, id: \.self) { day in
                     Text(day)
                         .font(.caption)
+                        .foregroundColor(.gray)
                         .frame(maxWidth: .infinity)
-                        .foregroundColor(.secondary)
                 }
             }
-            .padding(.vertical, 8)
             
             // Calendar grid
             VStack(spacing: 0) {
@@ -89,7 +100,8 @@ struct MonthView: View {
                                 DayCell(
                                     date: date,
                                     isSelected: calendar.isDate(date, inSameDayAs: selectedDate),
-                                    hasBusyBlock: hasBusyBlock(on: date)
+                                    hasBusyBlock: hasBusyBlock(on: date),
+                                    hasTasksDue: hasTasksDue(on: date)
                                 )
                                 .onTapGesture {
                                     selectedDate = date
@@ -121,39 +133,37 @@ struct MonthView: View {
     }
 }
 
+// MARK: - Day Cell
 struct DayCell: View {
     let date: Date
     let isSelected: Bool
     let hasBusyBlock: Bool
+    let hasTasksDue: Bool
+    @EnvironmentObject private var themeManager: ThemeManager
     
     private let calendar = Calendar.current
-    
-    private var dayNumber: String {
-        String(calendar.component(.day, from: date))
-    }
-    
-    private var isToday: Bool {
-        calendar.isDateInToday(date)
-    }
     
     var body: some View {
         ZStack {
             Circle()
-                .fill(isSelected ? Color.accentColor : Color.clear)
-                .overlay(
-                    Circle()
-                        .stroke(isToday ? Color.accentColor : Color.clear, lineWidth: 1)
-                )
+                .fill(isSelected ? themeManager.themeColor : Color.clear)
+                .opacity(0.2)
             
-            VStack(spacing: 2) {
-                Text(dayNumber)
-                    .font(.system(size: 16))
-                    .foregroundColor(isSelected ? .white : .primary)
+            VStack(spacing: 4) {
+                Text("\(calendar.component(.day, from: date))")
+                    .foregroundColor(isSelected ? themeManager.themeColor : .primary)
                 
-                if hasBusyBlock {
-                    Circle()
-                        .fill(isSelected ? .white : Color.accentColor)
-                        .frame(width: 4, height: 4)
+                HStack(spacing: 4) {
+                    if hasBusyBlock {
+                        Circle()
+                            .fill(themeManager.themeColor)
+                            .frame(width: 4, height: 4)
+                    }
+                    if hasTasksDue {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 4, height: 4)
+                    }
                 }
             }
         }
