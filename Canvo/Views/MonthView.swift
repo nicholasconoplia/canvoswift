@@ -25,21 +25,31 @@ struct MonthView: View {
             return []
         }
         
+        // Get the weekday of the first day (1 = Sunday, 2 = Monday, ..., 7 = Saturday)
         let firstWeekday = calendar.component(.weekday, from: firstDayOfMonth)
-        let numberOfDays = range.count
         
-        var days: [Date?] = Array(repeating: nil, count: firstWeekday - 2) // -2 because we start from Monday
+        // Calculate padding for Monday start
+        // Convert Sunday from 1 to 7 for easier calculation
+        let adjustedFirstWeekday = firstWeekday == 1 ? 7 : firstWeekday - 1
+        // Now Monday = 1, Tuesday = 2, ..., Sunday = 7
+        let paddingDays = adjustedFirstWeekday - 1
         
-        for day in 1...numberOfDays {
+        // Create array with padding
+        var days: [Date?] = Array(repeating: nil, count: paddingDays)
+        
+        // Add all days of the month
+        for day in 1...range.count {
             if let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) {
                 days.append(date)
             }
         }
         
+        // Add padding at the end to complete the last week
         while days.count % 7 != 0 {
             days.append(nil)
         }
         
+        // Split into weeks
         return days.chunked(into: 7)
     }
     
