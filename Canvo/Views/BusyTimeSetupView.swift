@@ -8,6 +8,7 @@ struct BusyTimeSetupView: View {
 
     @State private var newStart = Date()
     @State private var newEnd = Date().addingTimeInterval(3600)
+    @State private var newTitle = ""
     
     // Calendar selection
     @State private var selectedCalendarIDs: Set<String> = []
@@ -34,6 +35,15 @@ struct BusyTimeSetupView: View {
                             ForEach(busyBlocks) { block in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 4) {
+                                        if !block.title.isEmpty {
+                                            Text(block.title)
+                                                .font(.headline)
+                                        }
+                                        if let location = block.location {
+                                            Text(location)
+                                                .font(.subheadline)
+                                                .foregroundColor(.secondary)
+                                        }
                                         Text("Start: \(block.start.formatted(date: .abbreviated, time: .shortened))")
                                             .font(.subheadline)
                                         Text("End: \(block.end.formatted(date: .abbreviated, time: .shortened))")
@@ -142,14 +152,20 @@ struct BusyTimeSetupView: View {
                     Text("Add New Busy Time")
                         .font(.headline)
 
+                    TextField("Title (optional)", text: $newTitle)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .padding(.vertical, 4)
+
                     DatePicker("Start", selection: $newStart)
                     DatePicker("End", selection: $newEnd)
 
                     Button("Add Busy Block") {
                         if newEnd > newStart {
-                            let newBlock = BusyBlock(start: newStart, end: newEnd)
+                            let newBlock = BusyBlock(start: newStart, end: newEnd, title: newTitle)
                             busyBlocks.append(newBlock)
                             
+                            // Reset form
+                            newTitle = ""
                             newStart = newEnd
                             newEnd = newEnd.addingTimeInterval(3600)
                         } else {

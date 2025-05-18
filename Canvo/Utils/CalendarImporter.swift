@@ -116,8 +116,15 @@ class CalendarImporter {
             let predicate = self.eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: nil)
             let events = self.eventStore.events(matching: predicate)
             
-            // Convert to BusyBlock
-            let busyBlocks = events.map { BusyBlock(start: $0.startDate, end: $0.endDate) }
+            // Convert to BusyBlock with title and location
+            let busyBlocks = events.map { event in
+                BusyBlock(
+                    start: event.startDate,
+                    end: event.endDate,
+                    title: event.title,
+                    location: event.location
+                )
+            }
             
             // Use our safe delivery method
             self.deliverCompletion(completion, with: busyBlocks)
@@ -146,8 +153,15 @@ class CalendarImporter {
             let predicate = self.eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: selectedCalendars)
             let events = self.eventStore.events(matching: predicate)
             
-            // Convert to BusyBlock
-            let busyBlocks = events.map { BusyBlock(start: $0.startDate, end: $0.endDate) }
+            // Convert to BusyBlock with title and location
+            let busyBlocks = events.map { event in
+                BusyBlock(
+                    start: event.startDate,
+                    end: event.endDate,
+                    title: event.title,
+                    location: event.location
+                )
+            }
             
             // Use our safe delivery method
             self.deliverCompletion(completion, with: busyBlocks)

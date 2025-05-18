@@ -110,11 +110,18 @@ struct BusyBlockView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(block.title)
                 .font(.caption)
                 .foregroundColor(.white)
                 .lineLimit(1)
+            
+            if let location = block.location {
+                Text(location)
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.8))
+                    .lineLimit(1)
+            }
             
             Text("\(block.start.formatted(date: .omitted, time: .shortened)) - \(block.end.formatted(date: .omitted, time: .shortened))")
                 .font(.caption2)
