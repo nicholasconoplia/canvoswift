@@ -1,86 +1,149 @@
 import Foundation
 
-class TaskScheduler {
-    static func findFreeTimeSlots(
-        between startDate: Date,
-        and endDate: Date,
+struct TaskScheduler {
+    static func scheduleSessions(
+        for task: Task,
+        totalDuration: TimeInterval,
+        sessionDuration: TimeInterval,
         busyBlocks: [BusyBlock],
-        duration: TimeInterval,
+        deadline: Date,
+        existingSessions: [TaskSession],
         preferences: UserPreferences = UserPreferences.load()
-    ) -> [Date] {
-        let calendar = Calendar.current
-        var currentDate = startDate
-        var freeSlots: [Date] = []
-        
-        while currentDate < endDate {
-            let potentialEndTime = currentDate.addingTimeInterval(duration)
-            let hour = calendar.component(.hour, from: currentDate)
-            
-            // Check if this time slot is within preferred hours
-            let isWithinPreferredHours = preferences.isWithinPreferredTime(hour)
-            
-            // Check if this time slot overlaps with any busy blocks
-            let isOverlapping = busyBlocks.contains { block in
-                let blockStart = block.start
-                let blockEnd = block.end
-                return (currentDate >= blockStart && currentDate < blockEnd) ||
-                       (potentialEndTime > blockStart && potentialEndTime <= blockEnd) ||
-                       (currentDate <= blockStart && potentialEndTime >= blockEnd)
-            }
-            
-            // If no overlap and within preferred hours, add to free slots
-            if !isOverlapping {
-                // Add all available slots, but mark preferred ones
-                freeSlots.append(currentDate)
-            }
-            
-            // Move to next 30-minute slot
-            currentDate = calendar.date(byAdding: .minute, value: 30, to: currentDate) ?? endDate
-        }
-        
-        // Sort slots by preference (slots in preferred time ranges get priority)
-        return freeSlots.sorted { date1, date2 in
-            let hour1 = calendar.component(.hour, from: date1)
-            let hour2 = calendar.component(.hour, from: date2)
-            
-            let isPreferred1 = preferences.isWithinPreferredTime(hour1)
-            let isPreferred2 = preferences.isWithinPreferredTime(hour2)
-            
-            // If both are preferred or both are not preferred, keep chronological order
-            if isPreferred1 == isPreferred2 {
-                return date1 < date2
-            }
-            
-            // Prioritize preferred times
-            return isPreferred1
-        }
-    }
-    
-    static func scheduleSessions(for task: Task, totalDuration: TimeInterval, sessionDuration: TimeInterval, busyBlocks: [BusyBlock], deadline: Date) -> [TaskSession] {
+    ) -> [TaskSession] {
         let numberOfSessions = Int(ceil(totalDuration / sessionDuration))
-        let startDate = Date()
-        let freeSlots = findFreeTimeSlots(between: startDate, and: deadline, busyBlocks: busyBlocks, duration: sessionDuration)
+        var scheduledSessions: [TaskSession] = []
         
-        var sessions: [TaskSession] = []
+        // Start from tomorrow if deadline is not today
+        let startDate = Calendar.current.isDateInToday(deadline) 
+            ? Date() 
+            : Calendar.current.startOfDay(for: Date())
         
-        // Try to distribute sessions evenly across available slots
-        let slotsPerSession = max(1, freeSlots.count / numberOfSessions)
+        // Get all possible time slots until deadline
+        let availableSlots = findAvailableTimeSlots(
+            from: startDate,
+            to: deadline,
+            sessionDuration: sessionDuration,
+            busyBlocks: busyBlocks,
+            existingSessions: existingSessions,
+            preferences: preferences
+        )
         
-        for sessionIndex in 0..<numberOfSessions {
-            let slotIndex = sessionIndex * slotsPerSession
-            if slotIndex < freeSlots.count {
+        // Try to distribute sessions evenly across available days
+        let slotsPerDay = min(
+            preferences.maximumSessionsPerDay,
+            Int(ceil(Double(numberOfSessions) / Double(daysBetween(startDate, and: deadline))))
+        )
+        
+        var currentSlotIndex = 0
+        var remainingSessions = numberOfSessions
+        
+        while remainingSessions > 0 && currentSlotIndex < availableSlots.count {
+            let slot = availableSlots[currentSlotIndex]
+            
+            // Check if we haven't exceeded maximum sessions for this day
+            let sessionsForDay = scheduledSessions.filter { 
+                Calendar.current.isDate($0.start, inSameDayAs: slot.start)
+            }.count
+            
+            if sessionsForDay < slotsPerDay {
                 let session = TaskSession(
+                    id: UUID(),
                     taskId: task.id,
                     taskTitle: task.name,
-                    start: freeSlots[slotIndex],
+                    start: slot.start,
                     duration: sessionDuration,
-                    sessionNumber: sessionIndex + 1,
+                    sessionNumber: numberOfSessions - remainingSessions + 1,
                     totalSessions: numberOfSessions
                 )
-                sessions.append(session)
+                scheduledSessions.append(session)
+                remainingSessions -= 1
             }
+            
+            currentSlotIndex += 1
         }
         
-        return sessions
+        return scheduledSessions
     }
+    
+    private static func findAvailableTimeSlots(
+        from startDate: Date,
+        to endDate: Date,
+        sessionDuration: TimeInterval,
+        busyBlocks: [BusyBlock],
+        existingSessions: [TaskSession],
+        preferences: UserPreferences
+    ) -> [TimeSlot] {
+        var availableSlots: [TimeSlot] = []
+        let calendar = Calendar.current
+        var currentDate = startDate
+        
+        while currentDate <= endDate {
+            // Check if it's a working day
+            let weekday = calendar.component(.weekday, from: currentDate)
+            if preferences.workingDays.contains(weekday) {
+                // Get start and end of working hours for this day
+                let dayStart = calendar.date(
+                    bySettingHour: calendar.component(.hour, from: preferences.workingHours.startTime),
+                    minute: calendar.component(.minute, from: preferences.workingHours.startTime),
+                    second: 0,
+                    of: currentDate
+                ) ?? currentDate
+                
+                let dayEnd = calendar.date(
+                    bySettingHour: calendar.component(.hour, from: preferences.workingHours.endTime),
+                    minute: calendar.component(.minute, from: preferences.workingHours.endTime),
+                    second: 0,
+                    of: currentDate
+                ) ?? currentDate
+                
+                // Start from current time if it's today
+                var timePointer = calendar.isDateInToday(currentDate) 
+                    ? max(Date(), dayStart)
+                    : dayStart
+                
+                while timePointer.addingTimeInterval(sessionDuration) <= dayEnd {
+                    let hour = calendar.component(.hour, from: timePointer)
+                    
+                    // Only consider slots within preferred time ranges
+                    if preferences.isWithinPreferredTime(hour) {
+                        let potentialSlotEnd = timePointer.addingTimeInterval(sessionDuration)
+                        
+                        // Check if slot conflicts with busy blocks or existing sessions
+                        let hasConflict = busyBlocks.contains(where: { block in
+                            timePointer < block.end && potentialSlotEnd > block.start
+                        }) || existingSessions.contains(where: { session in
+                            timePointer < session.start.addingTimeInterval(session.duration) &&
+                            potentialSlotEnd > session.start
+                        })
+                        
+                        if !hasConflict {
+                            availableSlots.append(TimeSlot(start: timePointer, end: potentialSlotEnd))
+                        }
+                    }
+                    
+                    // Move to next potential slot, considering minimum break
+                    timePointer = timePointer.addingTimeInterval(
+                        preferences.minimumBreakBetweenSessions * 60
+                    )
+                }
+            }
+            
+            // Move to next day
+            currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? endDate
+        }
+        
+        return availableSlots
+    }
+    
+    private static func daysBetween(_ start: Date, and end: Date) -> Int {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.day], from: start, to: end)
+        return max(1, components.day ?? 1)
+    }
+}
+
+// MARK: - Supporting Types
+struct TimeSlot {
+    let start: Date
+    let end: Date
 } 

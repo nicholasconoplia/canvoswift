@@ -34,30 +34,42 @@ struct UserPreferences: Codable {
         }
     }
     
-    var hoursPerWeek: Double      // e.g. 10
-    var sessionDuration: TimeInterval // e.g. 3600 (1 hour)
+    struct WorkingHours: Codable {
+        var startTime: Date // Store as minutes from midnight
+        var endTime: Date   // Store as minutes from midnight
+        
+        // Convert to/from minutes for easier calculations
+        var startMinutes: Int {
+            Calendar.current.component(.hour, from: startTime) * 60 +
+            Calendar.current.component(.minute, from: startTime)
+        }
+        
+        var endMinutes: Int {
+            Calendar.current.component(.hour, from: endTime) * 60 +
+            Calendar.current.component(.minute, from: endTime)
+        }
+    }
+    
+    var workingHours: WorkingHours
+    var preferredSessionDuration: TimeInterval // in minutes
+    var workingDays: Set<Int> // 1 = Sunday, 2 = Monday, ..., 7 = Saturday
+    var minimumBreakBetweenSessions: TimeInterval // in minutes
+    var maximumSessionsPerDay: Int
     var workTimePreferences: Set<WorkTimePreference>
     
-    init(hoursPerWeek: Double = 10, 
-         sessionDuration: TimeInterval = 3600,
-         workTimePreferences: Set<WorkTimePreference> = [.morning]) {
-        self.hoursPerWeek = hoursPerWeek
-        self.sessionDuration = sessionDuration
-        self.workTimePreferences = workTimePreferences
-    }
-    
-    static func load() -> UserPreferences {
-        if let data = UserDefaults.standard.data(forKey: "UserPreferences"),
-           let preferences = try? JSONDecoder().decode(UserPreferences.self, from: data) {
-            return preferences
-        }
-        return UserPreferences()
-    }
-    
-    func save() {
-        if let encoded = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(encoded, forKey: "UserPreferences")
-        }
+    static var `default`: UserPreferences {
+        let calendar = Calendar.current
+        let defaultStart = calendar.date(from: DateComponents(hour: 9, minute: 0)) ?? Date()
+        let defaultEnd = calendar.date(from: DateComponents(hour: 17, minute: 0)) ?? Date()
+        
+        return UserPreferences(
+            workingHours: WorkingHours(startTime: defaultStart, endTime: defaultEnd),
+            preferredSessionDuration: 30,
+            workingDays: Set(2...6), // Monday to Friday by default
+            minimumBreakBetweenSessions: 15,
+            maximumSessionsPerDay: 8,
+            workTimePreferences: [.morning, .afternoon] // Default to morning and afternoon
+        )
     }
     
     func isWithinPreferredTime(_ hour: Int) -> Bool {
@@ -75,5 +87,23 @@ struct UserPreferences: Codable {
             }
         }
         return false
+    }
+}
+
+// MARK: - UserPreferences Storage
+extension UserPreferences {
+    private static let storageKey = "user_preferences"
+    
+    static func load() -> UserPreferences {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let preferences = try? JSONDecoder().decode(UserPreferences.self, from: data) else {
+            return .default
+        }
+        return preferences
+    }
+    
+    func save() {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        UserDefaults.standard.set(data, forKey: UserPreferences.storageKey)
     }
 } 

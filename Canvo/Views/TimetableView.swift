@@ -11,6 +11,7 @@ struct TimetableView: View {
     @State private var selectedView = 0 // 0 for Calendar, 1 for Scheduler
     @State private var showAllTasks = false
     @EnvironmentObject private var themeManager: ThemeManager
+    @State private var preferences = UserPreferences.load()
     
     // Add taskLists state
     @State private var taskLists: [TaskList] = []
@@ -156,11 +157,13 @@ struct TimetableView: View {
                 }
             }
             .sheet(isPresented: $showingWorkPreference) {
-                WorkTimePreferenceView()
-                    .onDisappear {
-                        UserDefaults.standard.set(true, forKey: "HasSetWorkPreference")
-                        isFirstPreference = false
-                    }
+                NavigationView {
+                    WorkTimePreferenceView(preferences: $preferences)
+                }
+                .onDisappear {
+                    UserDefaults.standard.set(true, forKey: "HasSetWorkPreference")
+                    isFirstPreference = false
+                }
             }
             .sheet(isPresented: $showingBusyTimeSetup) {
                 NavigationView {
