@@ -1,6 +1,6 @@
 import Foundation
 
-struct TaskSession: Identifiable, Codable {
+struct TaskSession: Identifiable, Codable, Equatable {
     let id: UUID
     let taskId: UUID
     let taskTitle: String
@@ -21,5 +21,15 @@ struct TaskSession: Identifiable, Codable {
     
     var end: Date {
         start.addingTimeInterval(duration)
+    }
+    
+    static func == (lhs: TaskSession, rhs: TaskSession) -> Bool {
+        return lhs.id == rhs.id &&
+               lhs.taskId == rhs.taskId &&
+               lhs.taskTitle == rhs.taskTitle &&
+               lhs.start == rhs.start &&
+               lhs.duration == rhs.duration &&
+               lhs.sessionNumber == rhs.sessionNumber &&
+               lhs.totalSessions == rhs.totalSessions
     }
 } 

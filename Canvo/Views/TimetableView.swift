@@ -130,6 +130,9 @@ struct TimetableView: View {
                             
                             BusyTimeSetupView(busyBlocks: $busyBlocks)
                                 .padding(.horizontal)
+                                .onChange(of: busyBlocks) { newValue in
+                                    saveTimetableData()
+                                }
                         }
                     }
                 }
@@ -172,6 +175,7 @@ struct TimetableView: View {
                         .navigationBarItems(
                             trailing: Button("Done") {
                                 showingBusyTimeSetup = false
+                                saveTimetableData()
                             }
                         )
                 }
@@ -182,6 +186,9 @@ struct TimetableView: View {
                     busyBlocks: busyBlocks,
                     taskSessions: $taskSessions
                 )
+                .onChange(of: taskSessions) { newValue in
+                    saveTimetableData()
+                }
             }
         }
         .onAppear {
@@ -190,11 +197,35 @@ struct TimetableView: View {
             }
             // Load task lists
             taskLists = DataManager.load()
+            // Load timetable data
+            loadTimetableData()
+            // Start observing iCloud changes
+            initializeICloudObserver()
         }
         // Listen for task list updates
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TaskListsUpdated"))) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TaskListsUpdated"))) { notification in
             taskLists = DataManager.load()
         }
+        // Listen for timetable data updates
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TimetableDataUpdated"))) { notification in
+            loadTimetableData()
+        }
+    }
+    
+    private func initializeICloudObserver() {
+        _Concurrency.Task {
+            try? await TimetableDataManager.startObservingICloudChanges()
+        }
+    }
+    
+    private func saveTimetableData() {
+        TimetableDataManager.save(taskSessions: taskSessions, busyBlocks: busyBlocks)
+    }
+    
+    private func loadTimetableData() {
+        let data = TimetableDataManager.load()
+        taskSessions = data.taskSessions
+        busyBlocks = data.busyBlocks
     }
     
     private var dateFormatter: DateFormatter {
