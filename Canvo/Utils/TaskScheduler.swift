@@ -20,19 +20,19 @@ struct TaskScheduler {
             isQuiz: task.name.lowercased().contains("quiz")
         )
         
-        // Start from tomorrow if deadline is not today, otherwise start after buffer time
+        // Start from now + buffer time if deadline is today, otherwise start from tomorrow
         let now = Date()
         let startDate = Calendar.current.isDateInToday(deadline)
             ? now.addingTimeInterval(bufferTime * 60) // Convert minutes to seconds
             : Calendar.current.startOfDay(for: now.addingTimeInterval(24 * 3600))
         
         // Get all possible time slots until deadline
-        let availableSlots = findAvailableTimeSlots(
+        var availableSlots = findAvailableTimeSlots(
             from: startDate,
             to: deadline,
             sessionDuration: sessionDuration,
             busyBlocks: busyBlocks,
-            existingSessions: existingSessions,
+            existingSessions: existingSessions + scheduledSessions, // Include already scheduled sessions
             preferences: preferences
         )
         
@@ -55,7 +55,7 @@ struct TaskScheduler {
                 let slot = availableSlots[currentSlotIndex]
                 
                 // Check if we haven't exceeded maximum sessions for this day
-                let sessionsForDay = scheduledSessions.filter { 
+                let sessionsForDay = (existingSessions + scheduledSessions).filter { 
                     Calendar.current.isDate($0.start, inSameDayAs: slot.start)
                 }.count
                 
@@ -66,19 +66,29 @@ struct TaskScheduler {
                 } ?? true
                 
                 if sessionsForDay < slotsPerDay && respectsDaySpacing {
-                    // Check for overlaps with existing sessions and task slot limits
-                    let hasOverlap = scheduledSessions.contains { existingSession in
+                    // Check for overlaps with all sessions (existing + already scheduled)
+                    let hasOverlap = (existingSessions + scheduledSessions).contains { session in
                         let sessionEnd = slot.start.addingTimeInterval(sessionDuration)
-                        let existingEnd = existingSession.start.addingTimeInterval(existingSession.duration)
-                        return (slot.start < existingEnd && sessionEnd > existingSession.start)
+                        let existingEnd = session.start.addingTimeInterval(session.duration)
+                        
+                        // Check for direct overlap
+                        let directOverlap = slot.start < existingEnd && sessionEnd > session.start
+                        
+                        // Check for minimum break violation
+                        let minimumBreak = preferences.minimumBreakBetweenSessions * 60
+                        let breakStartTime = session.start.addingTimeInterval(session.duration)
+                        let breakEndTime = breakStartTime.addingTimeInterval(minimumBreak)
+                        let violatesBreak = slot.start >= session.start && slot.start < breakEndTime
+                        
+                        return directOverlap || violatesBreak
                     }
                     
-                    let tasksInTimeSlot = scheduledSessions.filter { session in
+                    let tasksInTimeSlot = (existingSessions + scheduledSessions).filter { session in
                         let calendar = Calendar.current
                         let slotStartHour = calendar.component(.hour, from: slot.start)
-                        let slotStart = calendar.date(bySettingHour: slotStartHour, minute: 0, second: 0, of: slot.start) ?? slot.start
-                        let slotEnd = calendar.date(byAdding: .hour, value: 1, to: slotStart) ?? slot.start
-                        return session.start >= slotStart && session.start < slotEnd
+                        let sessionStartHour = calendar.component(.hour, from: session.start)
+                        return slotStartHour == sessionStartHour &&
+                               calendar.isDate(slot.start, inSameDayAs: session.start)
                     }.count
                     
                     if !hasOverlap && tasksInTimeSlot < preferences.distributionPreferences.maximumTasksPerTimeSlot {
@@ -94,6 +104,20 @@ struct TaskScheduler {
                         scheduledSessions.append(session)
                         lastSessionDate = slot.start
                         remainingSessions -= 1
+                        
+                        // Recalculate available slots with the new session included
+                        if remainingSessions > 0 {
+                            availableSlots = findAvailableTimeSlots(
+                                from: startDate,
+                                to: deadline,
+                                sessionDuration: sessionDuration,
+                                busyBlocks: busyBlocks,
+                                existingSessions: existingSessions + scheduledSessions,
+                                preferences: preferences
+                            )
+                            currentSlotIndex = 0
+                            continue
+                        }
                     }
                 }
                 
@@ -111,14 +135,15 @@ struct TaskScheduler {
         
         // Helper function for biased scheduling
         func scheduleWithBias(frontLoad: Bool) {
-            let slots = frontLoad ? availableSlots : Array(availableSlots.reversed())
             var remainingSessions = numberOfSessions
             var lastSessionDate: Date?
+            var currentSlots = frontLoad ? availableSlots : Array(availableSlots.reversed())
             
-            for slot in slots {
-                guard remainingSessions > 0 else { break }
+            while remainingSessions > 0 && !currentSlots.isEmpty {
+                let slot = currentSlots[0]
+                currentSlots.removeFirst()
                 
-                let sessionsForDay = scheduledSessions.filter { 
+                let sessionsForDay = (existingSessions + scheduledSessions).filter { 
                     Calendar.current.isDate($0.start, inSameDayAs: slot.start)
                 }.count
                 
@@ -128,18 +153,28 @@ struct TaskScheduler {
                 } ?? true
                 
                 if sessionsForDay < preferences.maximumSessionsPerDay && respectsDaySpacing {
-                    let hasOverlap = scheduledSessions.contains { existingSession in
+                    let hasOverlap = (existingSessions + scheduledSessions).contains { session in
                         let sessionEnd = slot.start.addingTimeInterval(sessionDuration)
-                        let existingEnd = existingSession.start.addingTimeInterval(existingSession.duration)
-                        return (slot.start < existingEnd && sessionEnd > existingSession.start)
+                        let existingEnd = session.start.addingTimeInterval(session.duration)
+                        
+                        // Check for direct overlap
+                        let directOverlap = slot.start < existingEnd && sessionEnd > session.start
+                        
+                        // Check for minimum break violation
+                        let minimumBreak = preferences.minimumBreakBetweenSessions * 60
+                        let breakStartTime = session.start.addingTimeInterval(session.duration)
+                        let breakEndTime = breakStartTime.addingTimeInterval(minimumBreak)
+                        let violatesBreak = slot.start >= session.start && slot.start < breakEndTime
+                        
+                        return directOverlap || violatesBreak
                     }
                     
-                    let tasksInTimeSlot = scheduledSessions.filter { session in
+                    let tasksInTimeSlot = (existingSessions + scheduledSessions).filter { session in
                         let calendar = Calendar.current
                         let slotStartHour = calendar.component(.hour, from: slot.start)
-                        let slotStart = calendar.date(bySettingHour: slotStartHour, minute: 0, second: 0, of: slot.start) ?? slot.start
-                        let slotEnd = calendar.date(byAdding: .hour, value: 1, to: slotStart) ?? slot.start
-                        return session.start >= slotStart && session.start < slotEnd
+                        let sessionStartHour = calendar.component(.hour, from: session.start)
+                        return slotStartHour == sessionStartHour &&
+                               calendar.isDate(slot.start, inSameDayAs: session.start)
                     }.count
                     
                     if !hasOverlap && tasksInTimeSlot < preferences.distributionPreferences.maximumTasksPerTimeSlot {
@@ -155,6 +190,19 @@ struct TaskScheduler {
                         scheduledSessions.append(session)
                         lastSessionDate = slot.start
                         remainingSessions -= 1
+                        
+                        // Recalculate available slots with the new session included
+                        if remainingSessions > 0 {
+                            availableSlots = findAvailableTimeSlots(
+                                from: startDate,
+                                to: deadline,
+                                sessionDuration: sessionDuration,
+                                busyBlocks: busyBlocks,
+                                existingSessions: existingSessions + scheduledSessions,
+                                preferences: preferences
+                            )
+                            currentSlots = frontLoad ? availableSlots : Array(availableSlots.reversed())
+                        }
                     }
                 }
             }
@@ -172,6 +220,19 @@ struct TaskScheduler {
         var availableSlots: [TimeSlot] = []
         let calendar = Calendar.current
         var currentDate = startDate
+        
+        // Convert existing sessions to busy blocks for easier conflict checking
+        let sessionBlocks = existingSessions.map { session in
+            BusyBlock(
+                id: UUID(),
+                start: session.start,
+                end: session.start.addingTimeInterval(session.duration),
+                title: session.taskTitle
+            )
+        }
+        
+        // Combine all busy blocks and sort them by start time
+        let allBusyBlocks = (busyBlocks + sessionBlocks).sorted { $0.start < $1.start }
         
         while currentDate <= endDate {
             // Check if it's a working day
@@ -202,6 +263,7 @@ struct TaskScheduler {
                     ? max(Date(), dayStart)
                     : dayStart
                 
+                // Find all available slots for this day
                 while timePointer.addingTimeInterval(sessionDuration) <= dayEnd {
                     let hour = calendar.component(.hour, from: timePointer)
                     
@@ -209,22 +271,39 @@ struct TaskScheduler {
                     if preferences.isWithinPreferredTime(hour) {
                         let potentialSlotEnd = timePointer.addingTimeInterval(sessionDuration)
                         
-                        // Check if slot conflicts with busy blocks or existing sessions
-                        let hasConflict = busyBlocks.contains(where: { block in
-                            timePointer < block.end && potentialSlotEnd > block.start
-                        }) || existingSessions.contains(where: { session in
-                            timePointer < session.start.addingTimeInterval(session.duration) &&
-                            potentialSlotEnd > session.start
-                        })
+                        // Check if this time slot overlaps with any busy blocks
+                        let hasConflict = allBusyBlocks.contains { block in
+                            // Check for direct overlap
+                            let directOverlap = timePointer < block.end && potentialSlotEnd > block.start
+                            
+                            // Check for minimum break violation
+                            let minimumBreak = preferences.minimumBreakBetweenSessions * 60
+                            let breakStartTime = block.end
+                            let breakEndTime = block.end.addingTimeInterval(minimumBreak)
+                            let violatesBreak = timePointer >= block.start && timePointer < breakEndTime
+                            
+                            // Check for same hour conflict
+                            let sameHourConflict = calendar.isDate(timePointer, equalTo: block.start, toGranularity: .hour)
+                            
+                            return directOverlap || violatesBreak || sameHourConflict
+                        }
                         
                         if !hasConflict {
-                            availableSlots.append(TimeSlot(start: timePointer, end: potentialSlotEnd))
+                            // Check if there are any tasks already scheduled in this hour
+                            let tasksInSameHour = allBusyBlocks.filter { block in
+                                calendar.component(.hour, from: block.start) == hour &&
+                                calendar.isDate(block.start, inSameDayAs: timePointer)
+                            }
+                            
+                            if tasksInSameHour.isEmpty {
+                                availableSlots.append(TimeSlot(start: timePointer, end: potentialSlotEnd))
+                            }
                         }
                     }
                     
                     // Move to next potential slot, considering minimum break
                     timePointer = timePointer.addingTimeInterval(
-                        preferences.minimumBreakBetweenSessions * 60
+                        max(sessionDuration, preferences.minimumBreakBetweenSessions * 60)
                     )
                 }
             }
@@ -233,7 +312,7 @@ struct TaskScheduler {
             currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? endDate
         }
         
-        return availableSlots
+        return availableSlots.sorted { $0.start < $1.start }
     }
     
     private static func daysBetween(_ start: Date, and end: Date) -> Int {

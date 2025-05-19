@@ -80,7 +80,8 @@ struct TaskTimeAllocationView: View {
                                 // Add new sessions
                                 taskSessions.append(contentsOf: newSessions)
                                 showingScheduleForm = false
-                            }
+                            },
+                            allTaskSessions: $taskSessions
                         )
                     }
                 }
@@ -194,13 +195,15 @@ struct ScheduleFormView: View {
     let existingSessions: [TaskSession]
     let busyBlocks: [BusyBlock]
     let onSchedule: ([TaskSession]) -> Void
-    
     @Environment(\.dismiss) private var dismiss
     @State private var totalHours: Double = 1
     @State private var sessionMinutes: Double = 30
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var preferences = UserPreferences.load()
+    
+    // Get all task sessions from parent view
+    @Binding var allTaskSessions: [TaskSession]
     
     var body: some View {
         VStack(spacing: 20) {
@@ -277,7 +280,7 @@ struct ScheduleFormView: View {
             sessionDuration: sessionDuration,
             busyBlocks: busyBlocks,
             deadline: dueDate,
-            existingSessions: existingSessions,
+            existingSessions: allTaskSessions,
             preferences: preferences
         )
         
