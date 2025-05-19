@@ -296,7 +296,7 @@ struct TaskScheduler {
                             }
                             
                             if tasksInSameHour.isEmpty {
-                                availableSlots.append(TimeSlot(start: timePointer, end: potentialSlotEnd))
+                            availableSlots.append(TimeSlot(start: timePointer, end: potentialSlotEnd))
                             }
                         }
                     }

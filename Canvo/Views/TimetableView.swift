@@ -20,6 +20,7 @@ struct TimetableView: View {
         // Convert TaskSessions to BusyBlocks for display
         let sessionBlocks = taskSessions.map { session in
             BusyBlock(
+                id: session.id,
                 start: session.start,
                 end: session.end,
                 title: "\(session.taskTitle) (Session \(session.sessionNumber)/\(session.totalSessions))"
@@ -113,8 +114,50 @@ struct TimetableView: View {
                                         .foregroundColor(.secondary)
                                         .padding(.horizontal)
                                     
-                                    DayView(date: selectedDate, busyBlocks: allBlocks)
-                                        .padding(.horizontal)
+                                    DayView(
+                                        date: selectedDate,
+                                        busyBlocks: allBlocks,
+                                        onBlockUpdate: { block, offsetMinutes in
+                                            // Check if it's a busy block or task session
+                                            if let index = busyBlocks.firstIndex(where: { $0.id == block.id }) {
+                                                updateBlock(block, offsetMinutes: offsetMinutes)
+                                            } else if let index = taskSessions.firstIndex(where: { $0.id == block.id }) {
+                                                // Directly use the session ID for matching
+                                                updateTaskSession(taskSessions[index], offsetMinutes: offsetMinutes)
+                                            }
+                                        },
+                                        onBlockDelete: { block in
+                                            // Check if it's a busy block or task session
+                                            if let index = busyBlocks.firstIndex(where: { $0.id == block.id }) {
+                                                busyBlocks.remove(at: index)
+                                                saveTimetableData()
+                                            } else if let index = taskSessions.firstIndex(where: { $0.id == block.id }) {
+                                                // Directly use the session ID for matching
+                                                taskSessions.remove(at: index)
+                                                saveTimetableData()
+                                            }
+                                        },
+                                        onBlockSave: { updatedBlock in
+                                            // Check if it's a busy block or task session
+                                            if let index = busyBlocks.firstIndex(where: { $0.id == updatedBlock.id }) {
+                                                busyBlocks[index] = updatedBlock
+                                                saveTimetableData()
+                                            } else if let index = taskSessions.firstIndex(where: { $0.id == updatedBlock.id }) {
+                                                // Update the task session with the new times
+                                                taskSessions[index] = TaskSession(
+                                                    id: taskSessions[index].id,
+                                                    taskId: taskSessions[index].taskId,
+                                                    taskTitle: updatedBlock.title.replacingOccurrences(of: " \\(Session \\d+/\\d+\\)", with: "", options: .regularExpression),
+                                                    start: updatedBlock.start,
+                                                    duration: updatedBlock.end.timeIntervalSince(updatedBlock.start),
+                                                    sessionNumber: taskSessions[index].sessionNumber,
+                                                    totalSessions: taskSessions[index].totalSessions
+                                                )
+                                                saveTimetableData()
+                                            }
+                                        }
+                                    )
+                                    .padding(.horizontal)
                                 }
                             }
                         }
@@ -232,5 +275,43 @@ struct TimetableView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, MMMM d"
         return formatter
+    }
+    
+    // Add function to update block time
+    private func updateBlock(_ block: BusyBlock, offsetMinutes: Int) {
+        if let index = busyBlocks.firstIndex(where: { $0.id == block.id }) {
+            let duration = block.end.timeIntervalSince(block.start)
+            let newStart = Calendar.current.date(byAdding: .minute, value: offsetMinutes, to: block.start) ?? block.start
+            let newEnd = newStart.addingTimeInterval(duration)
+            
+            busyBlocks[index] = BusyBlock(
+                id: block.id,
+                start: newStart,
+                end: newEnd,
+                title: block.title,
+                location: block.location
+            )
+            
+            saveTimetableData()
+        }
+    }
+    
+    // Add function to update task session
+    private func updateTaskSession(_ session: TaskSession, offsetMinutes: Int) {
+        if let index = taskSessions.firstIndex(where: { $0.id == session.id }) {
+            let newStart = Calendar.current.date(byAdding: .minute, value: offsetMinutes, to: session.start) ?? session.start
+            
+            taskSessions[index] = TaskSession(
+                id: session.id,
+                taskId: session.taskId,
+                taskTitle: session.taskTitle,
+                start: newStart,
+                duration: session.duration,
+                sessionNumber: session.sessionNumber,
+                totalSessions: session.totalSessions
+            )
+            
+            saveTimetableData()
+        }
     }
 } 

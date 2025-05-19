@@ -30,6 +30,8 @@ struct TimetableDataManager {
     // MARK: - Save and Load Methods
     
     static func save(taskSessions: [TaskSession], busyBlocks: [BusyBlock]) {
+        print("Saving timetable data - Task Sessions: \(taskSessions.count), Busy Blocks: \(busyBlocks.count)")
+        
         let timetableData = TimetableData(taskSessions: taskSessions, busyBlocks: busyBlocks)
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
@@ -48,13 +50,21 @@ struct TimetableDataManager {
         do {
             let data = try encoder.encode(timetableData)
             try data.write(to: fileURL, options: [.atomicWrite])
-            print("Timetable data saved successfully to \(fileURL)")
+            print("✅ Timetable data saved successfully to \(fileURL)")
+            
+            // Verify the save by reading back
+            if let savedData = try? Data(contentsOf: fileURL),
+               let savedTimetable = try? JSONDecoder().decode(TimetableData.self, from: savedData) {
+                print("✅ Verified save - Task Sessions: \(savedTimetable.taskSessions.count), Busy Blocks: \(savedTimetable.busyBlocks.count)")
+            }
         } catch {
-            print("Error saving timetable data: \(error.localizedDescription)")
+            print("❌ Error saving timetable data: \(error.localizedDescription)")
         }
     }
     
     static func load() -> (taskSessions: [TaskSession], busyBlocks: [BusyBlock]) {
+        print("Loading timetable data...")
+        
         let fileURL: URL
         if useCloudKitSync, let iCloudURL = iCloudArchiveURL {
             fileURL = iCloudURL
@@ -63,16 +73,16 @@ struct TimetableDataManager {
         }
         
         guard let data = try? Data(contentsOf: fileURL) else {
-            print("No timetable data found, returning empty arrays")
+            print("⚠️ No timetable data found, returning empty arrays")
             return ([], [])
         }
         
         let decoder = JSONDecoder()
         if let timetableData = try? decoder.decode(TimetableData.self, from: data) {
-            print("Timetable data loaded successfully from \(fileURL)")
+            print("✅ Timetable data loaded successfully - Task Sessions: \(timetableData.taskSessions.count), Busy Blocks: \(timetableData.busyBlocks.count)")
             return (timetableData.taskSessions, timetableData.busyBlocks)
         } else {
-            print("Couldn't decode timetable data, returning empty arrays")
+            print("❌ Couldn't decode timetable data, returning empty arrays")
             return ([], [])
         }
     }
