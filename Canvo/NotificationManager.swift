@@ -34,15 +34,31 @@ final class NotificationManager {
     }
     
     // Setup custom notification categories with actions
+    private let sessionStartCategoryId = "SESSION_START"
+    private let sessionEndCategoryId = "SESSION_END"
+    
     private func setupNotificationCategories() {
-        // "Complete" action for task notifications
+        // Existing complete action
         let completeAction = UNNotificationAction(
             identifier: "COMPLETE_TASK",
             title: "Complete",
             options: .foreground
         )
         
-        // Create the task category with actions
+        // New actions for session end notification
+        let taskCompletedAction = UNNotificationAction(
+            identifier: "SESSION_COMPLETED",
+            title: "I finished it",
+            options: .foreground
+        )
+        
+        let needMoreTimeAction = UNNotificationAction(
+            identifier: "NEED_MORE_TIME",
+            title: "I need more time",
+            options: .foreground
+        )
+        
+        // Create categories with actions
         let taskCategory = UNNotificationCategory(
             identifier: taskCategoryIdentifier,
             actions: [completeAction],
@@ -50,8 +66,77 @@ final class NotificationManager {
             options: []
         )
         
-        // Register the category
-        UNUserNotificationCenter.current().setNotificationCategories([taskCategory])
+        let sessionStartCategory = UNNotificationCategory(
+            identifier: sessionStartCategoryId,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+        
+        let sessionEndCategory = UNNotificationCategory(
+            identifier: sessionEndCategoryId,
+            actions: [taskCompletedAction, needMoreTimeAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        
+        // Register all categories
+        UNUserNotificationCenter.current().setNotificationCategories([
+            taskCategory,
+            sessionStartCategory,
+            sessionEndCategory
+        ])
+    }
+    
+    func scheduleSessionNotifications(for session: TaskSession) {
+        guard areNotificationsEnabled() else { return }
+        
+        // Schedule start notification
+        let startContent = UNMutableNotificationContent()
+        startContent.title = "Session Starting"
+        startContent.body = "Time to start working on: \(session.taskTitle)"
+        startContent.categoryIdentifier = sessionStartCategoryId
+        startContent.userInfo = [
+            "taskID": session.taskId.uuidString,
+            "sessionID": session.id.uuidString
+        ]
+        
+        // Schedule end notification
+        let endContent = UNMutableNotificationContent()
+        endContent.title = "Session Ending"
+        endContent.body = "Session for \(session.taskTitle) is ending. Did you complete the task?"
+        endContent.categoryIdentifier = sessionEndCategoryId
+        endContent.userInfo = [
+            "taskID": session.taskId.uuidString,
+            "sessionID": session.id.uuidString
+        ]
+        
+        // Create triggers
+        let startTrigger = UNCalendarNotificationTrigger(
+            dateMatching: Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: session.start),
+            repeats: false
+        )
+        
+        let endTrigger = UNCalendarNotificationTrigger(
+            dateMatching: Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: session.end),
+            repeats: false
+        )
+        
+        // Create and schedule requests
+        let startRequest = UNNotificationRequest(
+            identifier: "session-start-\(session.id.uuidString)",
+            content: startContent,
+            trigger: startTrigger
+        )
+        
+        let endRequest = UNNotificationRequest(
+            identifier: "session-end-\(session.id.uuidString)",
+            content: endContent,
+            trigger: endTrigger
+        )
+        
+        UNUserNotificationCenter.current().add(startRequest)
+        UNUserNotificationCenter.current().add(endRequest)
     }
     
     // Check if notifications are enabled in settings
@@ -166,15 +251,51 @@ final class NotificationManager {
     func handleNotificationResponse(_ response: UNNotificationResponse, completion: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
         
-        // Extract task ID from user info
+        // Extract task ID and session ID from user info
         guard let taskIDString = userInfo["taskID"] as? String,
               let taskID = UUID(uuidString: taskIDString) else {
             completion()
             return
         }
         
-        // Handle "Complete" action
-        if response.actionIdentifier == "COMPLETE_TASK" {
+        // Handle session end actions
+        if response.notification.request.content.categoryIdentifier == sessionEndCategoryId {
+            let sessionIDString = userInfo["sessionID"] as? String
+            let sessionID = sessionIDString.flatMap { UUID(uuidString: $0) }
+            
+            switch response.actionIdentifier {
+            case "SESSION_COMPLETED":
+                // Task was completed, no further action needed
+                print("Session completed successfully")
+                
+            case "NEED_MORE_TIME":
+                // User needs more time - trigger UI for duration selection
+                if let sessionID = sessionID {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("ShowSessionRescheduleUI"),
+                        object: nil,
+                        userInfo: ["taskID": taskID, "sessionID": sessionID]
+                    )
+                }
+                
+            case UNNotificationDefaultActionIdentifier:
+                // Notification was tapped without selecting an action
+                if let sessionID = sessionID {
+                    TaskScheduler.rescheduleSession(taskID: taskID, sessionID: sessionID, duration: 30 * 60)
+                }
+                
+            case UNNotificationDismissActionIdentifier:
+                // Notification was dismissed without action
+                if let sessionID = sessionID {
+                    TaskScheduler.rescheduleSession(taskID: taskID, sessionID: sessionID, duration: 30 * 60)
+                }
+                
+            default:
+                // Handle any other action identifiers
+                print("Unhandled notification action: \(response.actionIdentifier)")
+            }
+        } else if response.actionIdentifier == "COMPLETE_TASK" {
+            // Handle regular task completion
             markTaskAsCompleted(taskID: taskID)
         }
         
@@ -322,8 +443,22 @@ final class NotificationManager {
             print("\n=========================================")
         }
     }
+    
+    // Update notifications for a modified session
+    func updateSessionNotifications(for session: TaskSession) {
+        // Remove existing notifications for this session
+        UNUserNotificationCenter.current().removePendingNotificationRequests(
+            withIdentifiers: [
+                "session-start-\(session.id.uuidString)",
+                "session-end-\(session.id.uuidString)"
+            ]
+        )
+        
+        // Schedule new notifications
+        scheduleSessionNotifications(for: session)
+    }
 }
 
 // Add Sendable conformance for iOS 16+
 @available(iOS 16.0, *)
-extension NotificationManager: @unchecked Sendable {} 
+extension NotificationManager: @unchecked Sendable {}

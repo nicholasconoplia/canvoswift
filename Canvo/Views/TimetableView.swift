@@ -303,7 +303,7 @@ struct TimetableView: View {
         if let index = taskSessions.firstIndex(where: { $0.id == session.id }) {
             let newStart = Calendar.current.date(byAdding: .minute, value: offsetMinutes, to: session.start) ?? session.start
             
-            taskSessions[index] = TaskSession(
+            let updatedSession = TaskSession(
                 id: session.id,
                 taskId: session.taskId,
                 taskTitle: session.taskTitle,
@@ -313,7 +313,11 @@ struct TimetableView: View {
                 totalSessions: session.totalSessions
             )
             
+            taskSessions[index] = updatedSession
             saveTimetableData()
+            
+            // Update notifications for the modified session
+            NotificationManager.shared.updateSessionNotifications(for: updatedSession)
         }
     }
 } 

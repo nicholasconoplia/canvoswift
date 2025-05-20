@@ -320,10 +320,76 @@ struct TaskScheduler {
         let components = calendar.dateComponents([.day], from: start, to: end)
         return max(1, components.day ?? 1)
     }
+    
+    static func rescheduleSession(taskID: UUID, sessionID: UUID, duration: TimeInterval = 0) {
+        var taskLists = DataManager.load()
+        
+        // Find the task and its previous session
+        for taskList in taskLists {
+            if let task = taskList.tasks.first(where: { $0.id == taskID }) {
+                // Get all sessions for this task
+                let (sessions, busyBlocks) = TimetableDataManager.load()
+                guard let previousSession = sessions.first(where: { $0.id == sessionID }) else { return }
+                
+                // Calculate start time for tomorrow
+                let calendar = Calendar.current
+                let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+                let startTime = calendar.date(bySettingHour: calendar.component(.hour, from: previousSession.start),
+                                            minute: calendar.component(.minute, from: previousSession.start),
+                                            second: 0,
+                                            of: tomorrow) ?? tomorrow
+                
+                // If duration is 0, we'll show UI for custom duration
+                if duration == 0 {
+                    // Post notification to show duration selection UI
+                    NotificationCenter.default.post(
+                        name: Notification.Name("ShowSessionDurationUI"),
+                        object: nil,
+                        userInfo: [
+                            "taskID": taskID,
+                            "sessionID": sessionID,
+                            "previousDuration": previousSession.duration
+                        ]
+                    )
+                    return
+                }
+                
+                // Schedule new session
+                let newSessions = scheduleSessions(
+                    for: task,
+                    totalDuration: duration,
+                    sessionDuration: duration,
+                    busyBlocks: busyBlocks,
+                    deadline: task.dueDate ?? calendar.date(byAdding: .day, value: 7, to: Date()) ?? Date(),
+                    existingSessions: sessions
+                )
+                
+                if let newSession = newSessions.first {
+                    var updatedSessions = sessions
+                    updatedSessions.append(newSession)
+                    TimetableDataManager.save(taskSessions: updatedSessions, busyBlocks: busyBlocks)
+                    NotificationManager.shared.scheduleSessionNotifications(for: newSession)
+                    
+                    // Post notification that session was rescheduled
+                    NotificationCenter.default.post(
+                        name: Notification.Name("SessionRescheduled"),
+                        object: nil,
+                        userInfo: [
+                            "taskID": taskID,
+                            "oldSessionID": sessionID,
+                            "newSessionID": newSession.id
+                        ]
+                    )
+                }
+                
+                break
+            }
+        }
+    }
 }
 
 // MARK: - Supporting Types
 struct TimeSlot {
     let start: Date
     let end: Date
-} 
+}

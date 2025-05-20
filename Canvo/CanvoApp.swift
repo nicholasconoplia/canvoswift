@@ -14,7 +14,9 @@ struct CanvoApp: App {
     @StateObject private var themeManager = ThemeManager()
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
     @AppStorage("enableNotifications") private var enableNotifications = true
+    @AppStorage("hasRequestedNotifications") private var hasRequestedNotifications = false
     @State private var showWelcome = true
+    @State private var showNotificationPermission = false
     
     // Initialize UNUserNotificationCenter delegate
     init() {
@@ -46,6 +48,10 @@ struct CanvoApp: App {
                         .environmentObject(themeManager)
                         .onDisappear {
                             hasSeenWelcome = true
+                            // Show notification permission request after welcome screen
+                            if !hasRequestedNotifications {
+                                showNotificationPermission = true
+                            }
                         }
                 } else {
                     ContentView()
@@ -60,13 +66,25 @@ struct CanvoApp: App {
                             // Handle changes to notification settings
                             let taskLists = DataManager.load()
                             if newValue {
-                                // Re-request permission and schedule notifications
-                                NotificationManager.shared.requestPermission()
-                                NotificationManager.shared.rescheduleAllNotifications(for: taskLists)
+                                // Show permission request if not already shown
+                                if !hasRequestedNotifications {
+                                    showNotificationPermission = true
+                                } else {
+                                    // Re-request permission and schedule notifications
+                                    NotificationManager.shared.requestPermission { granted, _ in
+                                        if granted {
+                                            NotificationManager.shared.rescheduleAllNotifications(for: taskLists)
+                                        }
+                                    }
+                                }
                             } else {
                                 // Remove all pending notifications
                                 UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
                             }
+                        }
+                        .sheet(isPresented: $showNotificationPermission) {
+                            NotificationPermissionView()
+                                .environmentObject(themeManager)
                         }
                 }
             }

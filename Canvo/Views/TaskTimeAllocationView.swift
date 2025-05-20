@@ -288,6 +288,11 @@ struct ScheduleFormView: View {
             alertMessage = "Could not find suitable time slots. Try shorter sessions or check your schedule."
             showingAlert = true
         } else {
+            // Schedule notifications for each new session
+            for session in sessions {
+                NotificationManager.shared.scheduleSessionNotifications(for: session)
+            }
+            
             onSchedule(sessions)
             alertMessage = "Successfully scheduled \(sessions.count) sessions for '\(task.name)'"
             showingAlert = true
