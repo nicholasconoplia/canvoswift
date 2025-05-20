@@ -204,11 +204,13 @@ struct TimetableView: View {
             }
             .sheet(isPresented: $showingWorkPreference) {
                 NavigationView {
-                    WorkTimePreferenceView(preferences: $preferences)
+                    UserPreferencesView()
                 }
                 .onDisappear {
                     UserDefaults.standard.set(true, forKey: "HasSetWorkPreference")
                     isFirstPreference = false
+                    // Reload preferences after dismissal
+                    preferences = UserPreferences.load()
                 }
             }
             .sheet(isPresented: $showingBusyTimeSetup) {
