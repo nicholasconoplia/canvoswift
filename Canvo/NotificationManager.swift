@@ -17,18 +17,19 @@ final class NotificationManager {
     }
     
     // Request notification permission
-    func requestPermission(completion: ((Bool, Error?) -> Void)? = nil) {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let completion = completion {
-                completion(granted, error)
-            }
-            
-            if granted {
-                print("Notification permission granted")
-            } else if let error = error {
-                print("Error requesting notification permission: \(error.localizedDescription)")
-            } else {
-                print("Notification permission denied")
+    func requestPermission(completion: (@Sendable (Bool, Error?) -> Void)? = nil) {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
+            // Ensure we're on the main thread before calling completion
+            DispatchQueue.main.async {
+                completion?(granted, error)
+                
+                if granted {
+                    print("Notification permission granted")
+                } else if let error = error {
+                    print("Error requesting notification permission: \(error.localizedDescription)")
+                } else {
+                    print("Notification permission denied")
+                }
             }
         }
     }

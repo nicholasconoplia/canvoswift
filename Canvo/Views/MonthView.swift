@@ -165,15 +165,27 @@ struct DayCell: View {
     
     private let calendar = Calendar.current
     
+    private var isToday: Bool {
+        calendar.isDateInToday(date)
+    }
+    
     var body: some View {
         ZStack {
+            // Background circle for selection
             Circle()
                 .fill(isSelected ? themeManager.themeColor : Color.clear)
                 .opacity(0.2)
             
+            // Current day circle
+            if isToday {
+                Circle()
+                    .stroke(themeManager.themeColor, lineWidth: 2)
+            }
+            
             VStack(spacing: 4) {
                 Text("\(calendar.component(.day, from: date))")
-                    .foregroundColor(isSelected ? themeManager.themeColor : .primary)
+                    .foregroundColor(isSelected ? themeManager.themeColor : (isToday ? themeManager.themeColor : .primary))
+                    .font(isToday ? .body.bold() : .body)
                 
                 HStack(spacing: 4) {
                     if hasBusyBlock {

@@ -20,7 +20,7 @@ struct CanvoApp: App {
     
     // Initialize UNUserNotificationCenter delegate
     init() {
-        // Set up notification delegate
+        // Set up notification delegate first
         if #available(iOS 16.0, *) {
             UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
         } else {
@@ -28,10 +28,9 @@ struct CanvoApp: App {
             setupLegacyNotificationDelegate()
         }
         
-        // Request notification permission only if enabled
-        if UserDefaults.standard.bool(forKey: "enableNotifications") {
-            NotificationManager.shared.requestPermission()
-        }
+        // Don't request permission immediately on init
+        // Instead, we'll request it after the app is fully loaded
+        // This prevents potential crashes during app launch
     }
     
     // Setup notification delegate for iOS 15 and below
@@ -49,8 +48,18 @@ struct CanvoApp: App {
                         .onDisappear {
                             hasSeenWelcome = true
                             // Show notification permission request after welcome screen
-                            if !hasRequestedNotifications {
-                                showNotificationPermission = true
+                            if !hasRequestedNotifications && enableNotifications {
+                                NotificationManager.shared.requestPermission { granted, error in
+                                    // Since we're modifying @AppStorage, ensure we're on main thread
+                                    DispatchQueue.main.async { [self] in
+                                        hasRequestedNotifications = true
+                                        if granted {
+                                            // Schedule notifications for all tasks
+                                            let taskLists = DataManager.load()
+                                            NotificationManager.shared.rescheduleAllNotifications(for: taskLists)
+                                        }
+                                    }
+                                }
                             }
                         }
                 } else {
