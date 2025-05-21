@@ -120,7 +120,7 @@ struct ContentView: View {
                             }
                         }
                     }
-                    .navigationViewStyle(.stack)
+                    .navigationViewStyle(StackNavigationViewStyle())
                     .tabItem {
                         Label(item.name, systemImage: item.icon)
                     }
