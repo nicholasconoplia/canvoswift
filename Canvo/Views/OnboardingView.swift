@@ -5,6 +5,7 @@ struct OnboardingView: View {
     @AppStorage("useCanvas") private var useCanvas = false
     @State private var showCanvasAPIGuide = false
     @State private var showPreferences = false
+    @State private var showFeatureCarousel = false
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.dismiss) private var dismiss
     
@@ -63,7 +64,7 @@ struct OnboardingView: View {
                             if let calendarTabIndex = themeManager.tabItems.firstIndex(where: { $0.id == 3 }) {
                                 themeManager.tabItems[calendarTabIndex].isVisible = false
                             }
-                            showPreferences = true
+                            showFeatureCarousel = true
                         }) {
                             Text("No")
                                 .font(.headline)
@@ -82,24 +83,20 @@ struct OnboardingView: View {
             .padding()
             .navigationBarHidden(true)
             .sheet(isPresented: $showCanvasAPIGuide) {
-                CanvasAPIGuideView(showPreferences: $showPreferences)
+                CanvasAPIGuideView(showFeatureCarousel: $showFeatureCarousel)
+            }
+            .sheet(isPresented: $showFeatureCarousel) {
+                OnboardingCarouselView(useCanvas: useCanvas, showPreferences: $showPreferences)
             }
             .sheet(isPresented: $showPreferences) {
-                NavigationView {
-                    UserPreferencesView()
-                        .navigationTitle("Preferences")
-                        .navigationBarItems(trailing: Button("Done") {
-                            hasCompletedOnboarding = true
-                            dismiss()
-                        })
-                }
+                OnboardingPreferencesView()
             }
         }
     }
 }
 
 struct CanvasAPIGuideView: View {
-    @Binding var showPreferences: Bool
+    @Binding var showFeatureCarousel: Bool
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var themeManager: ThemeManager
     
@@ -128,9 +125,9 @@ struct CanvasAPIGuideView: View {
                     
                     Button(action: {
                         dismiss()
-                        showPreferences = true
+                        showFeatureCarousel = true
                     }) {
-                        Text("Continue to Preferences")
+                        Text("Continue to Features")
                             .font(.headline)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -144,7 +141,7 @@ struct CanvasAPIGuideView: View {
             }
             .navigationBarItems(trailing: Button("Skip") {
                 dismiss()
-                showPreferences = true
+                showFeatureCarousel = true
             })
         }
     }
