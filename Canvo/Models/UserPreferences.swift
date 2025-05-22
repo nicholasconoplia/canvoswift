@@ -1,6 +1,6 @@
 import Foundation
 
-struct UserPreferences: Codable {
+struct UserPreferences: Codable, Equatable {
     enum WorkTimePreference: String, Codable, CaseIterable {
         case morning = "morning"      // 6AM - 12PM
         case afternoon = "afternoon"  // 12PM - 5PM
@@ -34,7 +34,7 @@ struct UserPreferences: Codable {
         }
     }
     
-    struct WorkingHours: Codable {
+    struct WorkingHours: Codable, Equatable {
         var startTime: Date // Store as minutes from midnight
         var endTime: Date   // Store as minutes from midnight
         
@@ -48,10 +48,14 @@ struct UserPreferences: Codable {
             Calendar.current.component(.hour, from: endTime) * 60 +
             Calendar.current.component(.minute, from: endTime)
         }
+        
+        static func == (lhs: WorkingHours, rhs: WorkingHours) -> Bool {
+            return lhs.startTime == rhs.startTime && lhs.endTime == rhs.endTime
+        }
     }
     
     // Task type-specific buffer times (in minutes)
-    struct BufferTimes: Codable {
+    struct BufferTimes: Codable, Equatable {
         var highPriority: TimeInterval = 15
         var mediumPriority: TimeInterval = 30
         var lowPriority: TimeInterval = 45
@@ -61,7 +65,7 @@ struct UserPreferences: Codable {
     }
     
     // Task distribution preferences
-    struct DistributionPreferences: Codable {
+    struct DistributionPreferences: Codable, Equatable {
         var preferEvenDistribution: Bool = true
         var frontLoadTasks: Bool = false
         var backLoadTasks: Bool = false
@@ -129,6 +133,17 @@ struct UserPreferences: Codable {
             }
         }
         return bufferTimes.general
+    }
+    
+    static func == (lhs: UserPreferences, rhs: UserPreferences) -> Bool {
+        return lhs.workingHours == rhs.workingHours &&
+               lhs.preferredSessionDuration == rhs.preferredSessionDuration &&
+               lhs.workingDays == rhs.workingDays &&
+               lhs.minimumBreakBetweenSessions == rhs.minimumBreakBetweenSessions &&
+               lhs.maximumSessionsPerDay == rhs.maximumSessionsPerDay &&
+               lhs.workTimePreferences == rhs.workTimePreferences &&
+               lhs.bufferTimes == rhs.bufferTimes &&
+               lhs.distributionPreferences == rhs.distributionPreferences
     }
 }
 

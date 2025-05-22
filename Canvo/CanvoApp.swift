@@ -14,9 +14,11 @@ struct CanvoApp: App {
     @StateObject private var themeManager = ThemeManager()
     @StateObject private var streakService = StreakService()
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("enableNotifications") private var enableNotifications = true
     @AppStorage("hasRequestedNotifications") private var hasRequestedNotifications = false
     @State private var showWelcome = true
+    @State private var showOnboarding = false
     @State private var showNotificationPermission = false
     
     // Initialize UNUserNotificationCenter delegate
@@ -28,10 +30,6 @@ struct CanvoApp: App {
             // For iOS 15 and below, use a different approach
             setupLegacyNotificationDelegate()
         }
-        
-        // Don't request permission immediately on init
-        // Instead, we'll request it after the app is fully loaded
-        // This prevents potential crashes during app launch
     }
     
     // Setup notification delegate for iOS 15 and below
@@ -48,21 +46,12 @@ struct CanvoApp: App {
                         .environmentObject(themeManager)
                         .onDisappear {
                             hasSeenWelcome = true
-                            // Show notification permission request after welcome screen
-                            if !hasRequestedNotifications && enableNotifications {
-                                NotificationManager.shared.requestPermission { granted, error in
-                                    // Since we're modifying @AppStorage, ensure we're on main thread
-                                    DispatchQueue.main.async { [self] in
-                                        hasRequestedNotifications = true
-                                        if granted {
-                                            // Schedule notifications for all tasks
-                                            let taskLists = DataManager.load()
-                                            NotificationManager.shared.rescheduleAllNotifications(for: taskLists)
-                                        }
-                                    }
-                                }
-                            }
+                            showOnboarding = true
                         }
+                } else if !hasCompletedOnboarding {
+                    OnboardingView()
+                        .environmentObject(themeManager)
+                        .transition(.opacity)
                 } else {
                     ContentView()
                         .environmentObject(themeManager)
@@ -71,6 +60,19 @@ struct CanvoApp: App {
                         .onAppear {
                             // Update daily streak when app opens
                             streakService.checkAndUpdateDailyStreak()
+                            
+                            // Request notifications if not already done
+                            if !hasRequestedNotifications && enableNotifications {
+                                NotificationManager.shared.requestPermission { granted, error in
+                                    DispatchQueue.main.async {
+                                        hasRequestedNotifications = true
+                                        if granted {
+                                            let taskLists = DataManager.load()
+                                            NotificationManager.shared.rescheduleAllNotifications(for: taskLists)
+                                        }
+                                    }
+                                }
+                            }
                             
                             // Schedule notifications for all tasks when the app appears (if enabled)
                             let taskLists = DataManager.load()
@@ -102,6 +104,8 @@ struct CanvoApp: App {
                         }
                 }
             }
+            .animation(.easeInOut, value: hasSeenWelcome)
+            .animation(.easeInOut, value: hasCompletedOnboarding)
         }
     }
 }
