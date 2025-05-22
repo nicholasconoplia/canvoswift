@@ -10,88 +10,85 @@ struct OnboardingView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 24) {
-                // Welcome message
-                VStack(spacing: 16) {
-                    Image("logooutline")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 100)
-                    
-                    Text("Let's set Canvo up for you")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .multilineTextAlignment(.center)
-                    
-                    Text("We'll help you customize Canvo to fit your workflow")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.top, 40)
+        VStack(spacing: 24) {
+            // Welcome message
+            VStack(spacing: 16) {
+                Image("logooutline")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 100)
                 
-                // Canvas Integration Question
-                VStack(spacing: 20) {
-                    Text("Do you use Canvas at your university?")
-                        .font(.headline)
+                Text("Let's set Canvo up for you")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .multilineTextAlignment(.center)
+                
+                Text("We'll help you customize Canvo to fit your workflow")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 40)
+            
+            // Canvas Integration Question
+            VStack(spacing: 20) {
+                Text("Do you use Canvas at your university?")
+                    .font(.headline)
+                
+                HStack(spacing: 16) {
+                    Button(action: {
+                        useCanvas = true
+                        // Enable Canvas tab
+                        if let canvasTabIndex = themeManager.tabItems.firstIndex(where: { $0.id == 1 }) {
+                            themeManager.tabItems[canvasTabIndex].isVisible = true
+                        }
+                        showCanvasAPIGuide = true
+                    }) {
+                        Text("Yes")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(themeManager.themeColor)
+                            .cornerRadius(12)
+                    }
                     
-                    HStack(spacing: 16) {
-                        Button(action: {
-                            useCanvas = true
-                            // Enable Canvas tab
-                            if let canvasTabIndex = themeManager.tabItems.firstIndex(where: { $0.id == 1 }) {
-                                themeManager.tabItems[canvasTabIndex].isVisible = true
-                            }
-                            showCanvasAPIGuide = true
-                        }) {
-                            Text("Yes")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(themeManager.themeColor)
-                                .cornerRadius(12)
+                    Button(action: {
+                        useCanvas = false
+                        // Disable Canvas tab
+                        if let canvasTabIndex = themeManager.tabItems.firstIndex(where: { $0.id == 1 }) {
+                            themeManager.tabItems[canvasTabIndex].isVisible = false
                         }
-                        
-                        Button(action: {
-                            useCanvas = false
-                            // Disable Canvas tab
-                            if let canvasTabIndex = themeManager.tabItems.firstIndex(where: { $0.id == 1 }) {
-                                themeManager.tabItems[canvasTabIndex].isVisible = false
-                            }
-                            // Disable Calendar tab
-                            if let calendarTabIndex = themeManager.tabItems.firstIndex(where: { $0.id == 3 }) {
-                                themeManager.tabItems[calendarTabIndex].isVisible = false
-                            }
-                            showFeatureCarousel = true
-                        }) {
-                            Text("No")
-                                .font(.headline)
-                                .foregroundColor(.gray)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color(.systemGray6))
-                                .cornerRadius(12)
+                        // Disable Calendar tab
+                        if let calendarTabIndex = themeManager.tabItems.firstIndex(where: { $0.id == 3 }) {
+                            themeManager.tabItems[calendarTabIndex].isVisible = false
                         }
+                        showFeatureCarousel = true
+                    }) {
+                        Text("No")
+                            .font(.headline)
+                            .foregroundColor(.gray)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
                     }
                 }
-                .padding(.horizontal)
-                
-                Spacer()
             }
-            .padding()
-            .navigationBarHidden(true)
-            .navigationViewStyle(StackNavigationViewStyle())
-            .sheet(isPresented: $showCanvasAPIGuide) {
-                CanvasAPIGuideView(showFeatureCarousel: $showFeatureCarousel)
-            }
-            .sheet(isPresented: $showFeatureCarousel) {
-                OnboardingCarouselView(useCanvas: useCanvas, showPreferences: $showPreferences)
-            }
-            .sheet(isPresented: $showPreferences) {
-                OnboardingPreferencesView()
-            }
+            .padding(.horizontal)
+            
+            Spacer()
+        }
+        .padding()
+        .navigationBarHidden(true)
+        .sheet(isPresented: $showCanvasAPIGuide) {
+            CanvasAPIGuideView(showFeatureCarousel: $showFeatureCarousel)
+        }
+        .sheet(isPresented: $showFeatureCarousel) {
+            OnboardingCarouselView(useCanvas: useCanvas, showPreferences: $showPreferences)
+        }
+        .sheet(isPresented: $showPreferences) {
+            OnboardingPreferencesView()
         }
     }
 }

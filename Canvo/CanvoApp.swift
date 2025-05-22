@@ -49,9 +49,12 @@ struct CanvoApp: App {
                             showOnboarding = true
                         }
                 } else if !hasCompletedOnboarding {
-                    OnboardingView()
-                        .environmentObject(themeManager)
-                        .transition(.opacity)
+                    NavigationView {
+                        OnboardingView()
+                            .environmentObject(themeManager)
+                            .transition(.opacity)
+                    }
+                    .navigationViewStyle(StackNavigationViewStyle())
                 } else {
                     ContentView()
                         .environmentObject(themeManager)
