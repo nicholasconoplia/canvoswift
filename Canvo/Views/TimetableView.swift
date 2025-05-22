@@ -255,6 +255,7 @@ struct TimetableView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TimetableDataUpdated"))) { notification in
             loadTimetableData()
         }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
     
     private func initializeICloudObserver() {

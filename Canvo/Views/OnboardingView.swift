@@ -82,6 +82,7 @@ struct OnboardingView: View {
             }
             .padding()
             .navigationBarHidden(true)
+            .navigationViewStyle(StackNavigationViewStyle())
             .sheet(isPresented: $showCanvasAPIGuide) {
                 CanvasAPIGuideView(showFeatureCarousel: $showFeatureCarousel)
             }
