@@ -23,7 +23,7 @@ struct OnboardingCarouselView: View {
             CarouselItem(
                 title: "Spin the Wheel",
                 description: "Need help deciding what to work on? Let our wheel of tasks help you choose!",
-                imageName: "circle.grid.3x3"
+                imageName: "arrow.clockwise.circle"
             ),
             CarouselItem(
                 title: "Timetable",
