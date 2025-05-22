@@ -176,24 +176,13 @@ struct University: Identifiable, Hashable {
 let UNIVERSITIES: [University] = [
     University(name: "University of Technology Sydney (UTS)", url: "https://canvas.uts.edu.au"),
     University(name: "University of Sydney (USyd)", url: "https://canvas.sydney.edu.au"),
-    University(name: "Macquarie University", url: "https://ilearn.mq.edu.au"),
-    University(name: "Western Sydney University", url: "https://vuws.westernsydney.edu.au"),
-    University(name: "Australian Catholic University", url: "https://canvas.acu.edu.au"),
-    University(name: "UNSW Sydney", url: "https://moodle.telt.unsw.edu.au"),
+    University(name: "Western Sydney University (WSU)", url: "https://vuws.westernsydney.edu.au"),
+    University(name: "Australian Catholic University (ACU)", url: "https://canvas.acu.edu.au"),
+    University(name: "Australian National University (ANU)", url: "https://anu.edu.au"),
     University(name: "University of Melbourne", url: "https://canvas.lms.unimelb.edu.au"),
-    University(name: "Monash University", url: "https://lms.monash.edu"),
-    University(name: "Queensland University of Technology", url: "https://canvas.qut.edu.au"),
-    University(name: "University of Queensland", url: "https://learn.uq.edu.au"),
     University(name: "RMIT University", url: "https://canvas.rmit.edu.au"),
-    University(name: "La Trobe University", url: "https://lms.latrobe.edu.au"),
-    University(name: "Deakin University", url: "https://d2l.deakin.edu.au"),
-    University(name: "Curtin University", url: "https://lms.curtin.edu.au"),
-    University(name: "University of Western Australia", url: "https://lms.uwa.edu.au"),
+    University(name: "Queensland University of Technology (QUT)", url: "https://canvas.qut.edu.au"),
     University(name: "University of Adelaide", url: "https://myuni.adelaide.edu.au"),
-    University(name: "Flinders University", url: "https://flo.flinders.edu.au"),
-    University(name: "University of Tasmania", url: "https://mylo.utas.edu.au"),
-    University(name: "Charles Sturt University", url: "https://interact2.csu.edu.au"),
-    University(name: "University of New England", url: "https://moodle.une.edu.au"),
     University(name: "Custom University", url: "") // Represents the custom option
 ]
 
