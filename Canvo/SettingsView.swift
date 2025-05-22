@@ -4,6 +4,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) var systemColorScheme
     @EnvironmentObject var themeManager: ThemeManager
+    @EnvironmentObject private var streakService: StreakService
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = true
     @AppStorage("useCloudKitSync") private var useCloudKitSync = false
     @AppStorage("enableNotifications") private var enableNotifications = true
@@ -20,7 +21,15 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Appearance")) {
+                // Streaks Dashboard Section
+                Section {
+                    StreakDashboardView()
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
+                
+                // Theme Section
+                Section(header: Text("Theme")) {
                     Toggle("Use System Settings", isOn: $themeManager.useSystemAppearance)
                     
                     if !themeManager.useSystemAppearance {

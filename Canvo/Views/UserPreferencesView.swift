@@ -3,6 +3,7 @@ import SwiftUI
 struct UserPreferencesView: View {
     @State private var preferences = UserPreferences.load()
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var streakService: StreakService
     
     private let weekdays = [
         (1, "Sunday"),
@@ -16,6 +17,14 @@ struct UserPreferencesView: View {
     
     var body: some View {
         Form {
+            // Streaks Dashboard Section
+            Section {
+                StreakDashboardView()
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+            }
+            
+            // Working Hours Section
             Section(header: Text("Working Hours")) {
                 DatePicker(
                     "Start Time",

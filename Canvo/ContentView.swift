@@ -48,6 +48,7 @@ struct ContentView: View {
     
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject private var themeManager: ThemeManager
+    @EnvironmentObject private var streakService: StreakService
 
     // --- Body ---
     var body: some View {
@@ -914,6 +915,28 @@ struct ContentView: View {
         // Use your Apple ID or another identifier that only you would know
         return savedDevID == "nickconoplia" // Replace with your identifier
         #endif
+    }
+
+    private func toggleTaskCompletion(taskID: UUID, listID: UUID) {
+        if let listIndex = taskLists.firstIndex(where: { $0.id == listID }),
+           let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == taskID }) {
+            // Toggle completion
+            taskLists[listIndex].tasks[taskIndex].isCompleted.toggle()
+            
+            // If task is completed, update weekly study streak
+            if taskLists[listIndex].tasks[taskIndex].isCompleted {
+                streakService.checkAndUpdateWeeklyStudyStreak()
+            }
+            
+            // Save changes
+            DataManager.save(lists: taskLists)
+            
+            // Update notifications
+            NotificationManager.shared.rescheduleAllNotifications(for: taskLists)
+            
+            // Post notification for task list update
+            NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+        }
     }
 }
 

@@ -12,6 +12,7 @@ import EventKit
 @main
 struct CanvoApp: App {
     @StateObject private var themeManager = ThemeManager()
+    @StateObject private var streakService = StreakService()
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
     @AppStorage("enableNotifications") private var enableNotifications = true
     @AppStorage("hasRequestedNotifications") private var hasRequestedNotifications = false
@@ -65,8 +66,12 @@ struct CanvoApp: App {
                 } else {
                     ContentView()
                         .environmentObject(themeManager)
+                        .environmentObject(streakService)
                         .preferredColorScheme(themeManager.useSystemAppearance ? nil : (themeManager.isDarkMode ? .dark : .light))
                         .onAppear {
+                            // Update daily streak when app opens
+                            streakService.checkAndUpdateDailyStreak()
+                            
                             // Schedule notifications for all tasks when the app appears (if enabled)
                             let taskLists = DataManager.load()
                             NotificationManager.shared.rescheduleAllNotifications(for: taskLists)
