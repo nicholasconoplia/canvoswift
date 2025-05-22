@@ -4,6 +4,7 @@ struct UserPreferencesView: View {
     @State private var preferences = UserPreferences.load()
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var streakService: StreakService
+    @EnvironmentObject private var themeManager: ThemeManager
     
     private let weekdays = [
         (1, "Sunday"),
@@ -134,6 +135,16 @@ struct UserPreferencesView: View {
                 }
             }
         }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Save") {
+                    preferences.save()
+                    dismiss()
+                }
+                .foregroundColor(themeManager.themeColor)
+            }
+        }
         .onChange(of: preferences) { _ in
             preferences.save()
         }
@@ -152,5 +163,6 @@ struct UserPreferencesView: View {
     NavigationView {
         UserPreferencesView()
             .environmentObject(StreakService())
+            .environmentObject(ThemeManager())
     }
 } 

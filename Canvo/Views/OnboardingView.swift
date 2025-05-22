@@ -38,6 +38,10 @@ struct OnboardingView: View {
                     HStack(spacing: 16) {
                         Button(action: {
                             useCanvas = true
+                            // Enable Canvas tab
+                            if let canvasTabIndex = themeManager.tabItems.firstIndex(where: { $0.id == 1 }) {
+                                themeManager.tabItems[canvasTabIndex].isVisible = true
+                            }
                             showCanvasAPIGuide = true
                         }) {
                             Text("Yes")
@@ -51,6 +55,14 @@ struct OnboardingView: View {
                         
                         Button(action: {
                             useCanvas = false
+                            // Disable Canvas tab
+                            if let canvasTabIndex = themeManager.tabItems.firstIndex(where: { $0.id == 1 }) {
+                                themeManager.tabItems[canvasTabIndex].isVisible = false
+                            }
+                            // Disable Calendar tab
+                            if let calendarTabIndex = themeManager.tabItems.firstIndex(where: { $0.id == 3 }) {
+                                themeManager.tabItems[calendarTabIndex].isVisible = false
+                            }
                             showPreferences = true
                         }) {
                             Text("No")
