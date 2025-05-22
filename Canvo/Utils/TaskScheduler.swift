@@ -20,11 +20,29 @@ struct TaskScheduler {
             isQuiz: task.name.lowercased().contains("quiz")
         )
         
-        // Start from now + buffer time if deadline is today, otherwise start from tomorrow
+        // Check if task is due tomorrow
+        let calendar = Calendar.current
         let now = Date()
-        let startDate = Calendar.current.isDateInToday(deadline)
-            ? now.addingTimeInterval(bufferTime * 60) // Convert minutes to seconds
-            : Calendar.current.startOfDay(for: now.addingTimeInterval(24 * 3600))
+        let tomorrow = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: now) ?? now)
+        let taskDueDate = calendar.startOfDay(for: deadline)
+        let isDueTomorrow = calendar.isDate(taskDueDate, inSameDayAs: tomorrow)
+        
+        // Start from now + 30 minutes if due tomorrow, now + buffer time if due today, otherwise start from tomorrow
+        let startDate: Date
+        if isDueTomorrow {
+            // If due tomorrow, start 30 minutes from now, but ensure it's before the due date
+            let thirtyMinutesFromNow = now.addingTimeInterval(30 * 60)
+            if thirtyMinutesFromNow < deadline {
+                startDate = thirtyMinutesFromNow
+            } else {
+                // If 30 minutes from now would be after the due date, start immediately
+                startDate = now
+            }
+        } else if calendar.isDateInToday(deadline) {
+            startDate = now.addingTimeInterval(bufferTime * 60) // Convert minutes to seconds
+        } else {
+            startDate = calendar.startOfDay(for: now.addingTimeInterval(24 * 3600))
+        }
         
         // Get all possible time slots until deadline
         var availableSlots = findAvailableTimeSlots(
