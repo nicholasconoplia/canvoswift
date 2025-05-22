@@ -665,16 +665,6 @@ struct CourseSelectionModalView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(course.displayName)
                                     .font(.headline)
-                                
-                                if course.isCurrent {
-                                    Text("Current course")
-                                        .font(.caption)
-                                        .foregroundColor(.green)
-                                } else {
-                                    Text("Past course")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
                             }
                             
                             Spacer()
