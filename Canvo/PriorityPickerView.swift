@@ -4,6 +4,7 @@ struct PriorityPickerView: View {
     @Binding var taskPriority: Priority?
     @Binding var showingPriorityPicker: Bool
     @Binding var showingContextMenu: Bool
+    var onSave: (() -> Void)? // Callback for saving changes
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -30,6 +31,8 @@ struct PriorityPickerView: View {
     private func priorityButton(priority: Priority) -> some View {
         Button {
             taskPriority = priority
+            // Save changes
+            onSave?()
             closePickers()
         } label: {
             HStack {
@@ -54,6 +57,8 @@ struct PriorityPickerView: View {
     private func clearPriorityButton() -> some View {
         Button {
             taskPriority = nil // Set to nil for no priority
+            // Save changes
+            onSave?()
             closePickers()
         } label: {
             Text("Clear Priority")
@@ -92,7 +97,8 @@ struct PriorityPickerView: View {
                 PriorityPickerView(
                     taskPriority: $priority,
                     showingPriorityPicker: $showingPicker,
-                    showingContextMenu: $showingContext
+                    showingContextMenu: $showingContext,
+                    onSave: { print("Save changes") }
                 )
             }
         }

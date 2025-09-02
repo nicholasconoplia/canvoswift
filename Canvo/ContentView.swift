@@ -7,10 +7,13 @@
 
 import SwiftUI
 import Security
+import UserNotifications
 
 struct ContentView: View {
     // State for the Settings modal
     @State private var showingSettings = false
+    // State for the Tutorial modal
+    @State private var showingTutorial = false
     // State for the collapsible Add Task section
     @State private var isAddTaskExpanded = false
     // State for the new task details
@@ -36,58 +39,106 @@ struct ContentView: View {
     @State private var showingNotesEditor = false
     // State to control priority picker from context menu
     @State private var showingPriorityPicker = false
-    // State to control priority picker for Add Task
-    @State private var showingAddTaskPriorityPicker = false
     // State to track selected tab
     @State private var selectedTab: Int = 0
+    // Add a flag to prevent auto-dismissal
+    @State private var keepContextMenuVisible = false
 
     // MARK: - Environment
     
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
+    @EnvironmentObject private var streakService: StreakService
 
     // --- Body ---
     var body: some View {
-        ZStack { // Use ZStack for layering overlays
-            NavigationView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // Title Header
-                    titleHeaderView
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                    
-                    // Custom Tab Selector and Indicator
-                    tabSelectorView
-                    tabIndicatorView
-                    
-                    // Show the appropriate view based on selected tab
-                    if selectedTab == 0 {
-                        // Tasks Content
-                        TasksView(
-                            showingSettings: $showingSettings,
-                            taskLists: $taskLists, // Pass binding
-                            isAddTaskExpanded: $isAddTaskExpanded, // Pass binding
-                            contextMenuTask: $contextMenuTask, // Pass binding
-                            contextMenuTaskListID: $contextMenuTaskListID, // Pass binding
-                            showingContextMenu: $showingContextMenu // Pass binding
-                        )
-                    } else {
-                        // Canvas Content
-                        canvasTabContent
+        ZStack {
+            TabView(selection: $selectedTab) {
+                ForEach(themeManager.tabItems.filter { $0.isVisible }.sorted(by: { $0.order < $1.order })) { item in
+                    NavigationView {
+                        VStack(spacing: 0) {
+                            switch item.id {
+                            case 0:
+                                TasksView(
+                                    showingSettings: $showingSettings,
+                                    taskLists: $taskLists,
+                                    isAddTaskExpanded: $isAddTaskExpanded,
+                                    contextMenuTask: $contextMenuTask,
+                                    contextMenuTaskListID: $contextMenuTaskListID,
+                                    showingContextMenu: $showingContextMenu,
+                                    showingPriorityPicker: $showingPriorityPicker,
+                                    showingContextMenuDatePicker: $showingContextMenuDatePicker
+                                )
+                            case 1:
+                                CanvasIntegrationView()
+                            case 2:
+                                WheelSpinnerView(taskLists: $taskLists)
+                            case 3:
+                                CalendarView(taskLists: $taskLists)
+                            case 4:
+                                TimetableView()
+                            default:
+                                EmptyView()
+                            }
+                        }
+                        .navigationTitle(item.name)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                HStack(spacing: 16) {
+                                    if isDeveloperMode() {
+                                        // Test 5 AM notifications button
+                                        Button {
+                                            NotificationManager.shared.createDebugTaskForNotificationTesting()
+                                        } label: {
+                                            Image(systemName: "bell.badge.fill")
+                                                .foregroundColor(themeManager.themeColor)
+                                        }
+                                        
+                                        // Check pending notifications button
+                                        Button {
+                                            NotificationManager.shared.checkPendingNotifications()
+                                        } label: {
+                                            Image(systemName: "list.bullet.clipboard")
+                                                .foregroundColor(themeManager.themeColor)
+                                        }
+                                    }
+                                    
+                                    Button {
+                                        showingTutorial = true
+                                    } label: {
+                                        Image(systemName: "questionmark.circle")
+                                            .foregroundColor(themeManager.themeColor)
+                                    }
+                                    
+                                    Button {
+                                        showingSettings = true
+                                    } label: {
+                                        Image(systemName: "gear")
+                                            .foregroundColor(themeManager.themeColor)
+                                    }
+                                }
+                            }
+                        }
                     }
-                }
-                .navigationTitle("")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) { 
-                        settingsToolbarButton 
+                    .navigationViewStyle(StackNavigationViewStyle())
+                    .tabItem {
+                        Label(item.name, systemImage: item.icon)
                     }
+                    .tag(item.id)
                 }
             }
+            .tint(themeManager.themeColor)
             .sheet(isPresented: $showingSettings) {
-                SettingsView() // Present the Settings modal
+                SettingsView()
+                    .environmentObject(themeManager)
+            }
+            .sheet(isPresented: $showingTutorial) {
+                TutorialView()
+                    .environmentObject(themeManager)
             }
             // Add Task Date Picker Sheet
-             .sheet(isPresented: $showingDatePicker) {
+            .sheet(isPresented: $showingDatePicker) {
                 datePickerSheet // Moved from TasksView
             }
             // Context Menu Date Picker Sheet
@@ -97,11 +148,14 @@ struct ContentView: View {
                     contextMenuDatePickerSheet(taskBinding: taskBinding(taskID: task.id, listID: listID)) // Moved from TasksView
                 }
             }
-
-            // --- Overlays ---
             
+            // Welcome Overlay
+            WelcomeOverlayView()
+        }
+        // --- Overlays ---
+        .overlay {
             // Dimmed Background Overlay (covers everything when overlays are active)
-            if showingContextMenu || showingContextMenuDatePicker || showingNotesEditor || showingPriorityPicker || showingAddTaskPriorityPicker || isAddTaskExpanded {
+            if showingContextMenu || showingContextMenuDatePicker || showingNotesEditor || showingPriorityPicker || isAddTaskExpanded {
                 Color.black.opacity(0.4)
                     .ignoresSafeArea()
                     .onTapGesture { // Dismiss on tap outside
@@ -109,7 +163,8 @@ struct ContentView: View {
                     }
                     .zIndex(1) // Ensure dimming is above main content but below overlays
             }
-
+        }
+        .overlay {
             // Context Menu View (Conditional)
             if showingContextMenu, let task = contextMenuTask, let listID = contextMenuTaskListID {
                 TaskContextMenu(
@@ -119,15 +174,24 @@ struct ContentView: View {
                     showingContextMenu: $showingContextMenu,
                     onChangeDueDate: { 
                         showingContextMenu = false // Hide the context menu first
-                        showingContextMenuDatePicker = true 
+                        // Add a small delay before showing the date picker
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            showingContextMenuDatePicker = true
+                        }
                     },
                     onAddEditNotes: { 
                         showingContextMenu = false // Hide the context menu first
-                        showingNotesEditor = true 
+                        // Add a small delay before showing the notes editor
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            showingNotesEditor = true
+                        }
                     },
                     onChangePriority: { 
                         showingContextMenu = false // Hide the context menu first
-                        showingPriorityPicker = true 
+                        // Add a small delay before showing the priority picker
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            showingPriorityPicker = true
+                        }
                     },
                     onDelete: { 
                         deleteSelectedTask()
@@ -135,8 +199,20 @@ struct ContentView: View {
                 )
                 .transition(.scale.combined(with: .opacity))
                 .zIndex(2) // Ensure overlay is above dimming
+                .onAppear {
+                    print("Context menu appeared")
+                    // Prevent immediate auto-dismissal in CloudKit mode
+                    if UserDefaults.standard.bool(forKey: "useCloudKitSync") {
+                        keepContextMenuVisible = true
+                        // After a delay, reset flag to allow normal interaction
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            keepContextMenuVisible = false
+                        }
+                    }
+                }
             }
-
+        }
+        .overlay {
             // Notes Editor Overlay (Conditional)
             if showingNotesEditor, let task = contextMenuTask, let listID = contextMenuTaskListID {
                 NotesEditorView(
@@ -147,30 +223,21 @@ struct ContentView: View {
                 .transition(.scale.combined(with: .opacity))
                 .zIndex(2) // Ensure overlay is above dimming
             }
-
+        }
+        .overlay {
             // Priority Picker Overlay (Conditional - Context Menu)
             if showingPriorityPicker, let task = contextMenuTask, let listID = contextMenuTaskListID {
                 PriorityPickerView(
                     taskPriority: taskBinding(taskID: task.id, listID: listID).priority,
                     showingPriorityPicker: $showingPriorityPicker,
-                    showingContextMenu: $showingContextMenu
+                    showingContextMenu: $showingContextMenu,
+                    onSave: saveTaskLists
                 )
                 .transition(.scale.combined(with: .opacity))
                 .zIndex(2) // Ensure overlay is above dimming
             }
-
-            // Priority Picker Overlay for Add Task (Conditional)
-            if showingAddTaskPriorityPicker {
-                PriorityPickerView(
-                    taskPriority: $newTaskPriority,
-                    showingPriorityPicker: $showingAddTaskPriorityPicker,
-                    showingContextMenu: .constant(false) // Not linked to context menu
-                )
-                .transition(.scale.combined(with: .opacity))
-                .zIndex(2) // Ensure overlay is above dimming
-                 // Tap gesture handled by the main dimmed background now
-            }
-            
+        }
+        .overlay {
             // Add Task Form Overlay (when FAB is tapped)
             if isAddTaskExpanded {
                 addTaskFormOverlay // Moved from TasksView
@@ -178,19 +245,79 @@ struct ContentView: View {
                     .zIndex(2) // Ensure overlay is above dimming
             }
         }
-        .animation(.none, value: selectedTab) // Disable animation for tab changes
-        // Save data whenever taskLists changes
-        .onChange(of: taskLists) {
-            DataManager.save(lists: taskLists)
+        .onAppear {
+            setupView()
         }
-        // Apply animations to overlays (can refine these)
-        .animation(.easeInOut, value: showingContextMenu)
-        .animation(.easeInOut, value: showingNotesEditor)
-        .animation(.easeInOut, value: showingPriorityPicker)
-        .animation(.easeInOut, value: showingAddTaskPriorityPicker)
-        .animation(.spring(), value: isAddTaskExpanded)
-         .onAppear(perform: setupView) // Keep setup/cleanup if needed at this level
-         .onDisappear(perform: cleanupView)
+        .onDisappear {
+            cleanupView()
+        }
+        .onChange(of: selectedTab) { newTab in
+            // Save task lists when switching tabs
+            if newTab != 0 { // If switching away from Tasks tab
+                saveTaskLists()
+            } else { // If switching to Tasks tab
+                // Reload task lists when switching to Tasks tab
+                reloadTaskLists()
+            }
+        }
+    }
+
+    // MARK: - Setup and Cleanup
+
+    /// Setup any initial view state or observers
+    private func setupView() {
+        // Add notification observer for task list updates
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("TaskListsUpdated"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            // Structs don't need weak self - they're value types
+            DispatchQueue.main.async {
+                // Make sure we're actually getting a fresh copy
+                print("ContentView: Received TaskListsUpdated notification")
+                self.reloadTaskLists()
+                
+                // Force refresh again after a short delay to ensure UI updates
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.reloadTaskLists()
+                }
+            }
+        }
+        // Ensure TextEditor background is clear for overlay placeholder
+        UITextView.appearance().backgroundColor = .clear
+        updateSelectedList() // Ensure initial list selection for Add Task
+    }
+    
+    /// Clean up observers when view disappears
+    private func cleanupView() {
+        // Remove notification observer
+        NotificationCenter.default.removeObserver(
+            self,
+            name: Notification.Name("TaskListsUpdated"),
+            object: nil
+        )
+        // Reset TextEditor background appearance
+        UITextView.appearance().backgroundColor = nil
+    }
+    
+    /// Reload task lists from UserDefaults
+    private func reloadTaskLists() {
+        print("ContentView: Reloading task lists")
+        
+        // Load fresh data directly from DataManager
+        let freshLists = DataManager.load()
+        
+        // Create a deep copy to ensure SwiftUI detects the change
+        var updatedLists: [TaskList] = []
+        for list in freshLists {
+            updatedLists.append(list)
+        }
+        
+        // Update state with the new copy
+        self.taskLists = updatedLists
+        
+        print("ContentView: Task lists reloaded - found \(taskLists.count) lists with \(taskLists.reduce(0) { $0 + $1.tasks.count }) total tasks")
     }
 
     // MARK: - Common UI Elements (Header, Tabs)
@@ -260,7 +387,7 @@ struct ContentView: View {
                     // Removed CanvasView
                     
                     // Canvas LMS Integration
-                    CanvasIntegrationView(taskLists: $taskLists)
+                    CanvasIntegrationView()
                         .padding(.horizontal)
                 }
                 .padding(.top, 20) // Add some top padding
@@ -315,7 +442,7 @@ struct ContentView: View {
                  dateButton // Extracted below
              }
 
-             priorityButton // Extracted below
+             priorityPicker // REPLACED priorityButton with priorityPicker
              notesEditor // Extracted below
              addTaskButton // Extracted below
          }
@@ -372,9 +499,22 @@ struct ContentView: View {
         .foregroundColor(.primary)
     }
 
-    /// Button to select the priority.
-    private var priorityButton: some View {
-        Button { showingAddTaskPriorityPicker = true } label: {
+    /// Picker to select the priority using a menu style.
+    private var priorityPicker: some View {
+        Picker(selection: $newTaskPriority) {
+            // Option for no priority
+            Text("Clear Priority").tag(nil as Priority?)
+            
+            // Options for each priority case
+            ForEach(Priority.allCases) { priority in
+                HStack {
+                    Circle()
+                        .fill(color(for: priority))
+                        .frame(width: 10, height: 10)
+                    Text("\(priority.rawValue) Priority")
+                }.tag(priority as Priority?)
+            }
+        } label: {
             HStack {
                 if let priority = newTaskPriority {
                     Circle()
@@ -389,11 +529,13 @@ struct ContentView: View {
                     .font(.caption)
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(10)
+        .pickerStyle(.menu)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 15)
         .background(Color(.secondarySystemBackground)) // Use secondary for slight contrast
-        .cornerRadius(10)
-        .foregroundColor(.primary)
+        .cornerRadius(8)
+        .accentColor(.primary)
+        .frame(maxWidth: .infinity) // Ensure it takes full width like other controls
     }
 
     /// TextEditor for adding optional notes.
@@ -419,7 +561,7 @@ struct ContentView: View {
         Button("ADD TASK") { submitNewTask() }
             .frame(maxWidth: .infinity)
             .padding()
-            .background(Color.purple)
+            .background(themeManager.themeColor)
             .foregroundColor(.white)
             .cornerRadius(10)
             .font(.headline)
@@ -471,7 +613,21 @@ struct ContentView: View {
                     "Select Due Date",
                     selection: Binding<Date>(
                         get: { taskBinding.wrappedValue.dueDate ?? Date() },
-                        set: { taskBinding.wrappedValue.dueDate = $0 }
+                        set: { 
+                            // Store previous due date to check if it changed
+                            let previousDueDate = taskBinding.wrappedValue.dueDate
+                            
+                            // Set the new due date
+                            taskBinding.wrappedValue.dueDate = $0
+                            
+                            // Schedule notifications if due date changed and task is not completed
+                            if !taskBinding.wrappedValue.isCompleted {
+                                NotificationManager.shared.scheduleNotifications(for: taskBinding.wrappedValue)
+                            }
+                            
+                            // Save changes immediately after setting the due date
+                            saveTaskLists()
+                        }
                     ),
                     displayedComponents: [.date]
                 )
@@ -485,7 +641,16 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Clear") {
+                        // If there was a due date, remove all notifications
+                        if taskBinding.wrappedValue.dueDate != nil {
+                            NotificationManager.shared.removeNotifications(for: taskBinding.wrappedValue)
+                        }
+                        
+                        // Clear the due date
                         taskBinding.wrappedValue.dueDate = nil
+                        
+                        // Save changes after clearing the due date
+                        saveTaskLists()
                         dismissAllOverlays() // Use central dismiss
                     }
                 }
@@ -498,31 +663,8 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Toolbar Content
-
-    private var settingsToolbarButton: some View {
-        Button {
-            showingSettings = true
-        } label: {
-            Image(systemName: "gear")
-        }
-    }
-
     // MARK: - Helper Methods (Moved/Adapted from TasksView)
 
-    /// Logic to run when the view appears.
-    private func setupView() {
-        // Ensure TextEditor background is clear for overlay placeholder
-        UITextView.appearance().backgroundColor = .clear
-        updateSelectedList() // Ensure initial list selection for Add Task
-    }
-
-    /// Logic to run when the view disappears.
-    private func cleanupView() {
-        // Reset TextEditor background appearance
-        UITextView.appearance().backgroundColor = nil
-    }
-    
     /// Updates the selected list ID, typically when lists change or on appear.
     private func updateSelectedList() {
         if selectedListId == nil || !taskLists.contains(where: { $0.id == selectedListId }) {
@@ -551,6 +693,14 @@ struct ContentView: View {
             // Prepend to show new task at the top (optional)
             taskLists[listIndex].tasks.insert(newTask, at: 0)
             print("Added task '\(newTaskName)' to list '\(taskLists[listIndex].name)'")
+            
+            // Schedule notifications if the task has a due date
+            if newTask.dueDate != nil {
+                NotificationManager.shared.scheduleNotifications(for: newTask)
+            }
+            
+            // Save task lists after adding a new task
+            DataManager.save(lists: taskLists)
 
             // Reset fields and dismiss
             newTaskName = ""
@@ -568,14 +718,43 @@ struct ContentView: View {
     private func taskBinding(taskID: UUID, listID: UUID) -> Binding<Task> {
         Binding<Task>(
             get: {
-                guard let listIndex = taskLists.firstIndex(where: { $0.id == listID }),
-                      let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == taskID })
-                else {
-                    fatalError("Task not found for binding!")
+                print("Getting task binding for task: \(taskID), list: \(listID)")
+                
+                // First try to find the task in the current state
+                if let listIndex = taskLists.firstIndex(where: { $0.id == listID }),
+                   let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == taskID }) {
+                    return taskLists[listIndex].tasks[taskIndex]
                 }
-                return taskLists[listIndex].tasks[taskIndex]
+                
+                // If not found, try reloading from storage (CloudKit might have updated)
+                print("Task not found in memory - attempting to reload from storage")
+                let freshLists = DataManager.load()
+                
+                if let listIndex = freshLists.firstIndex(where: { $0.id == listID }),
+                   let taskIndex = freshLists[listIndex].tasks.firstIndex(where: { $0.id == taskID }) {
+                    
+                    // Found in storage - update our in-memory copy and return
+                    print("Task found in storage - updating in-memory copy")
+                    DispatchQueue.main.async {
+                        self.taskLists = freshLists
+                    }
+                    return freshLists[listIndex].tasks[taskIndex]
+                }
+                
+                // Still not found - log and return placeholder
+                print("Warning: Task not found after checking storage - CloudKit sync may be in progress")
+                
+                // Dismiss context menu on next run loop
+                DispatchQueue.main.async {
+                    self.dismissAllOverlays()
+                }
+                
+                // Return a placeholder task to avoid crash
+                return Task(name: "Task not found", notes: nil, isCompleted: false, dueDate: nil, priority: nil, isEditing: false)
             },
             set: { updatedTask in
+                print("Setting updated task: \(updatedTask.name), ID: \(updatedTask.id)")
+                
                 guard let listIndex = taskLists.firstIndex(where: { $0.id == listID }),
                       let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == taskID })
                 else {
@@ -583,6 +762,12 @@ struct ContentView: View {
                     return
                 }
                 taskLists[listIndex].tasks[taskIndex] = updatedTask
+                
+                // Immediately save changes to ensure sync
+                if UserDefaults.standard.bool(forKey: "useCloudKitSync") {
+                    print("CloudKit enabled - immediately saving changes")
+                    DataManager.save(lists: taskLists)
+                }
             }
         )
     }
@@ -594,9 +779,16 @@ struct ContentView: View {
             return
         }
 
+        // Clear the context menu state *before* modifying the list
+        let taskName = taskToDelete.name // Keep name for log message
+        contextMenuTask = nil 
+        contextMenuTaskListID = nil
+
         if let listIndex = taskLists.firstIndex(where: { $0.id == listID }) {
-            taskLists[listIndex].tasks.removeAll { $0.id == taskToDelete.id }
-            print("Deleted task '\(taskToDelete.name)' from list '\(taskLists[listIndex].name)'")
+            withAnimation {
+                taskLists[listIndex].tasks.removeAll { $0.id == taskToDelete.id }
+            }
+            print("Deleted task '\(taskName)' from list '\(taskLists[listIndex].name)'")
         } else {
             print("Error: List not found during deletion.")
         }
@@ -633,22 +825,123 @@ struct ContentView: View {
 
     /// Dismiss all relevant overlays
     private func dismissAllOverlays() {
-        // Use animation to smoothly dismiss
-        withAnimation {
+        print("Dismissing all overlays")
+        
+        // If keepContextMenuVisible is true, don't dismiss context menu
+        if keepContextMenuVisible && showingContextMenu {
+            print("Keeping context menu visible")
+            return
+        }
+        
+        // Save changes before dismissing overlays
+        saveTaskLists()
+        
+        // Only animate dismissal if some overlay is actually showing
+        let shouldAnimate = showingContextMenu || 
+                            showingContextMenuDatePicker || 
+                            showingNotesEditor || 
+                            showingPriorityPicker || 
+                            isAddTaskExpanded
+        
+        // Close all overlays
+        if shouldAnimate {
+            withAnimation {
+                showingContextMenu = false
+                showingContextMenuDatePicker = false
+                showingNotesEditor = false
+                showingPriorityPicker = false
+                isAddTaskExpanded = false
+            }
+        } else {
+            // If no animation needed, still set all to false
             showingContextMenu = false
             showingContextMenuDatePicker = false
             showingNotesEditor = false
             showingPriorityPicker = false
-            showingAddTaskPriorityPicker = false
             isAddTaskExpanded = false
         }
-        // Reset context task *after* animation if needed, or immediately
+        
+        // Clear context task after dismissing
         contextMenuTask = nil
         contextMenuTaskListID = nil
+    }
+
+    /// Save task lists to UserDefaults
+    private func saveTaskLists() {
+        DataManager.save(lists: taskLists)
+        
+        // Notify the NotificationManager to reschedule notifications 
+        // when task lists are saved
+        NotificationManager.shared.rescheduleAllNotifications(for: taskLists)
+        
+        print("Task lists saved: \(taskLists.count) lists with \(taskLists.flatMap { $0.tasks }.count) total tasks")
+    }
+
+    /// Add this function to ContentView
+    private func testNotification() {
+        // Create and schedule a notification that will fire in 5 seconds
+        let content = UNMutableNotificationContent()
+        content.title = "Test Notification"
+        content.body = "This is a test notification to verify that notifications are working"
+        content.sound = .default
+        content.categoryIdentifier = "TASK_CATEGORY"
+        
+        // Trigger notification 5 seconds from now
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
+        
+        // Create request with unique identifier
+        let identifier = "test-notification-\(Date().timeIntervalSince1970)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        // Schedule notification
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error scheduling test notification: \(error.localizedDescription)")
+            } else {
+                print("Test notification scheduled to appear in 5 seconds")
+            }
+        }
+    }
+
+    /// Check if the app is in developer mode
+    private func isDeveloperMode() -> Bool {
+        // Check UserDefaults for developer mode flag
+        #if DEBUG
+        // In DEBUG builds, default to true so you always have access during development
+        return UserDefaults.standard.bool(forKey: "developerMode_enabled")
+        #else
+        // In RELEASE builds, require developer ID match for added security
+        let savedDevID = UserDefaults.standard.string(forKey: "developer_identifier") ?? ""
+        // Use your Apple ID or another identifier that only you would know
+        return savedDevID == "nickconoplia" // Replace with your identifier
+        #endif
+    }
+
+    private func toggleTaskCompletion(taskID: UUID, listID: UUID) {
+        if let listIndex = taskLists.firstIndex(where: { $0.id == listID }),
+           let taskIndex = taskLists[listIndex].tasks.firstIndex(where: { $0.id == taskID }) {
+            // Toggle completion
+            taskLists[listIndex].tasks[taskIndex].isCompleted.toggle()
+            
+            // If task is completed, update weekly study streak
+            if taskLists[listIndex].tasks[taskIndex].isCompleted {
+                streakService.checkAndUpdateWeeklyStudyStreak()
+            }
+            
+            // Save changes
+            DataManager.save(lists: taskLists)
+            
+            // Update notifications
+            NotificationManager.shared.rescheduleAllNotifications(for: taskLists)
+            
+            // Post notification for task list update
+            NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+        }
     }
 }
 
 // --- Preview ---
 #Preview {
     ContentView()
+        .environmentObject(ThemeManager())
 }

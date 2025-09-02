@@ -17,12 +17,42 @@ struct Task: Identifiable, Hashable, Codable {
     var isCompleted: Bool = false
     var dueDate: Date? // Optional due date
     var priority: Priority? = .medium // Optional priority, default medium
-    // Add other properties as needed, e.g., creationDate
+    var isEditing: Bool = false // State for editing mode
+    
+    // Add CodingKeys to exclude isEditing from encoding
+    enum CodingKeys: String, CodingKey {
+        case id, name, notes, isCompleted, dueDate, priority
+    }
+    
+    // Custom encode implementation to exclude isEditing
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(notes, forKey: .notes)
+        try container.encode(isCompleted, forKey: .isCompleted)
+        try container.encodeIfPresent(dueDate, forKey: .dueDate)
+        try container.encodeIfPresent(priority, forKey: .priority)
+    }
 }
 
 // Struct for a Task List
 struct TaskList: Identifiable, Hashable, Codable {
-    let id = UUID()
+    let id: UUID
     var name: String
     var tasks: [Task] = [] // Array to hold tasks for this list
+    
+    // Default initializer creates a new UUID
+    init(name: String, tasks: [Task] = []) {
+        self.id = UUID()
+        self.name = name
+        self.tasks = tasks
+    }
+    
+    // Custom initializer allowing an existing ID to be passed
+    init(id: UUID, name: String, tasks: [Task] = []) {
+        self.id = id
+        self.name = name
+        self.tasks = tasks
+    }
 } 

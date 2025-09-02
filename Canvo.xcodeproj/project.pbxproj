@@ -6,32 +6,39 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXContainerItemProxy section */
-		018BEB922DBE247A0092B493 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 018BEB792DBE24780092B493 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 018BEB802DBE24780092B493;
-			remoteInfo = Canvo;
-		};
-		018BEB9C2DBE247A0092B493 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 018BEB792DBE24780092B493 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 018BEB802DBE24780092B493;
-			remoteInfo = Canvo;
-		};
-/* End PBXContainerItemProxy section */
+/* Begin PBXBuildFile section */
+		85A140AF612CAE07A441415F /* Pods_Canvo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 911ACC350019D36FE831DA01 /* Pods_Canvo.framework */; };
+/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		018BEB812DBE24780092B493 /* Canvo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Canvo.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		018BEB912DBE247A0092B493 /* CanvoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CanvoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		018BEB9B2DBE247A0092B493 /* CanvoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CanvoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3ACAFE56FE249C3652D7C366 /* Pods-Canvo.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Canvo.debug.xcconfig"; path = "Target Support Files/Pods-Canvo/Pods-Canvo.debug.xcconfig"; sourceTree = "<group>"; };
+		3C53F9E50ED500498F18002A /* Pods-Canvo.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Canvo.release.xcconfig"; path = "Target Support Files/Pods-Canvo/Pods-Canvo.release.xcconfig"; sourceTree = "<group>"; };
+		5A5715FF9E94779240B7CB84 /* Pods_Canvo_CanvoUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Canvo_CanvoUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		840D5C5F337E5DD932D8BEF2 /* Pods-CanvoTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CanvoTests.release.xcconfig"; path = "Target Support Files/Pods-CanvoTests/Pods-CanvoTests.release.xcconfig"; sourceTree = "<group>"; };
+		911ACC350019D36FE831DA01 /* Pods_Canvo.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Canvo.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		948F6A7E0A9CC15CD5536E69 /* Pods-Canvo-CanvoUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Canvo-CanvoUITests.debug.xcconfig"; path = "Target Support Files/Pods-Canvo-CanvoUITests/Pods-Canvo-CanvoUITests.debug.xcconfig"; sourceTree = "<group>"; };
+		AC4BFAB08C39A1A6ABD2297B /* Pods-Canvo-CanvoUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Canvo-CanvoUITests.release.xcconfig"; path = "Target Support Files/Pods-Canvo-CanvoUITests/Pods-Canvo-CanvoUITests.release.xcconfig"; sourceTree = "<group>"; };
+		EC76A62A6F517FF3B1E9909B /* Pods_CanvoTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_CanvoTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		F10D29657432FB72FAEBD947 /* Pods-CanvoTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CanvoTests.debug.xcconfig"; path = "Target Support Files/Pods-CanvoTests/Pods-CanvoTests.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		01E49A762DC33E4E004CCE20 /* Exceptions for "Canvo" folder in "Canvo" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 018BEB802DBE24780092B493 /* Canvo */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		018BEB832DBE24780092B493 /* Canvo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				01E49A762DC33E4E004CCE20 /* Exceptions for "Canvo" folder in "Canvo" target */,
+			);
 			path = Canvo;
 			sourceTree = "<group>";
 		};
@@ -52,20 +59,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		018BEB8E2DBE247A0092B493 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		018BEB982DBE247A0092B493 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
+				85A140AF612CAE07A441415F /* Pods_Canvo.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -79,6 +73,8 @@
 				018BEB942DBE247A0092B493 /* CanvoTests */,
 				018BEB9E2DBE247A0092B493 /* CanvoUITests */,
 				018BEB822DBE24780092B493 /* Products */,
+				2BCAD4773FF07DEF564336E6 /* Pods */,
+				8D8D9E6361A9B7A031EA319B /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -86,10 +82,31 @@
 			isa = PBXGroup;
 			children = (
 				018BEB812DBE24780092B493 /* Canvo.app */,
-				018BEB912DBE247A0092B493 /* CanvoTests.xctest */,
-				018BEB9B2DBE247A0092B493 /* CanvoUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		2BCAD4773FF07DEF564336E6 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				3ACAFE56FE249C3652D7C366 /* Pods-Canvo.debug.xcconfig */,
+				3C53F9E50ED500498F18002A /* Pods-Canvo.release.xcconfig */,
+				948F6A7E0A9CC15CD5536E69 /* Pods-Canvo-CanvoUITests.debug.xcconfig */,
+				AC4BFAB08C39A1A6ABD2297B /* Pods-Canvo-CanvoUITests.release.xcconfig */,
+				F10D29657432FB72FAEBD947 /* Pods-CanvoTests.debug.xcconfig */,
+				840D5C5F337E5DD932D8BEF2 /* Pods-CanvoTests.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
+		8D8D9E6361A9B7A031EA319B /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				911ACC350019D36FE831DA01 /* Pods_Canvo.framework */,
+				5A5715FF9E94779240B7CB84 /* Pods_Canvo_CanvoUITests.framework */,
+				EC76A62A6F517FF3B1E9909B /* Pods_CanvoTests.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -99,9 +116,11 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 018BEBA52DBE247A0092B493 /* Build configuration list for PBXNativeTarget "Canvo" */;
 			buildPhases = (
+				D0DB2458C35C41934C44C861 /* [CP] Check Pods Manifest.lock */,
 				018BEB7D2DBE24780092B493 /* Sources */,
 				018BEB7E2DBE24780092B493 /* Frameworks */,
 				018BEB7F2DBE24780092B493 /* Resources */,
+				577F2CCA9CC40BE89AA84665 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -111,57 +130,9 @@
 				018BEB832DBE24780092B493 /* Canvo */,
 			);
 			name = Canvo;
-			packageProductDependencies = (
-			);
 			productName = Canvo;
 			productReference = 018BEB812DBE24780092B493 /* Canvo.app */;
 			productType = "com.apple.product-type.application";
-		};
-		018BEB902DBE247A0092B493 /* CanvoTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 018BEBA82DBE247A0092B493 /* Build configuration list for PBXNativeTarget "CanvoTests" */;
-			buildPhases = (
-				018BEB8D2DBE247A0092B493 /* Sources */,
-				018BEB8E2DBE247A0092B493 /* Frameworks */,
-				018BEB8F2DBE247A0092B493 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				018BEB932DBE247A0092B493 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				018BEB942DBE247A0092B493 /* CanvoTests */,
-			);
-			name = CanvoTests;
-			packageProductDependencies = (
-			);
-			productName = CanvoTests;
-			productReference = 018BEB912DBE247A0092B493 /* CanvoTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
-		018BEB9A2DBE247A0092B493 /* CanvoUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 018BEBAB2DBE247A0092B493 /* Build configuration list for PBXNativeTarget "CanvoUITests" */;
-			buildPhases = (
-				018BEB972DBE247A0092B493 /* Sources */,
-				018BEB982DBE247A0092B493 /* Frameworks */,
-				018BEB992DBE247A0092B493 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				018BEB9D2DBE247A0092B493 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				018BEB9E2DBE247A0092B493 /* CanvoUITests */,
-			);
-			name = CanvoUITests;
-			packageProductDependencies = (
-			);
-			productName = CanvoUITests;
-			productReference = 018BEB9B2DBE247A0092B493 /* CanvoUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -175,14 +146,6 @@
 				TargetAttributes = {
 					018BEB802DBE24780092B493 = {
 						CreatedOnToolsVersion = 16.2;
-					};
-					018BEB902DBE247A0092B493 = {
-						CreatedOnToolsVersion = 16.2;
-						TestTargetID = 018BEB802DBE24780092B493;
-					};
-					018BEB9A2DBE247A0092B493 = {
-						CreatedOnToolsVersion = 16.2;
-						TestTargetID = 018BEB802DBE24780092B493;
 					};
 				};
 			};
@@ -201,8 +164,6 @@
 			projectRoot = "";
 			targets = (
 				018BEB802DBE24780092B493 /* Canvo */,
-				018BEB902DBE247A0092B493 /* CanvoTests */,
-				018BEB9A2DBE247A0092B493 /* CanvoUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -215,21 +176,49 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		018BEB8F2DBE247A0092B493 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		018BEB992DBE247A0092B493 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		577F2CCA9CC40BE89AA84665 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Canvo/Pods-Canvo-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Canvo/Pods-Canvo-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Canvo/Pods-Canvo-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		D0DB2458C35C41934C44C861 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-Canvo-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		018BEB7D2DBE24780092B493 /* Sources */ = {
@@ -239,34 +228,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		018BEB8D2DBE247A0092B493 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		018BEB972DBE247A0092B493 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		018BEB932DBE247A0092B493 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 018BEB802DBE24780092B493 /* Canvo */;
-			targetProxy = 018BEB922DBE247A0092B493 /* PBXContainerItemProxy */;
-		};
-		018BEB9D2DBE247A0092B493 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 018BEB802DBE24780092B493 /* Canvo */;
-			targetProxy = 018BEB9C2DBE247A0092B493 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		018BEBA32DBE247A0092B493 /* Debug */ = {
@@ -306,7 +268,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -329,6 +291,7 @@
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -369,7 +332,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -384,137 +347,78 @@
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
 		018BEBA62DBE247A0092B493 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3ACAFE56FE249C3652D7C366 /* Pods-Canvo.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Canvo/Canvo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"Canvo/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"Canvo/Preview Content\" \"Canvo/Resources\"";
 				DEVELOPMENT_TEAM = BZ8A567N3B;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Canvo/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Canvo;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nicholasconoplia.Canvo;
+				MARKETING_VERSION = 2.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nick.Canvo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
 		018BEBA72DBE247A0092B493 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3C53F9E50ED500498F18002A /* Pods-Canvo.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Canvo/Canvo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Canvo/Preview Content\"";
 				DEVELOPMENT_TEAM = BZ8A567N3B;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Canvo/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Canvo;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nicholasconoplia.Canvo;
+				MARKETING_VERSION = 2.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nick.Canvo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
-		018BEBA92DBE247A0092B493 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = BZ8A567N3B;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nicholasconoplia.CanvoTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Canvo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Canvo";
-			};
-			name = Debug;
-		};
-		018BEBAA2DBE247A0092B493 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = BZ8A567N3B;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nicholasconoplia.CanvoTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Canvo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Canvo";
-			};
-			name = Release;
-		};
-		018BEBAC2DBE247A0092B493 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = BZ8A567N3B;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nicholasconoplia.CanvoUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Canvo;
-			};
-			name = Debug;
-		};
-		018BEBAD2DBE247A0092B493 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = BZ8A567N3B;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nicholasconoplia.CanvoUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Canvo;
 			};
 			name = Release;
 		};
@@ -535,24 +439,6 @@
 			buildConfigurations = (
 				018BEBA62DBE247A0092B493 /* Debug */,
 				018BEBA72DBE247A0092B493 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		018BEBA82DBE247A0092B493 /* Build configuration list for PBXNativeTarget "CanvoTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				018BEBA92DBE247A0092B493 /* Debug */,
-				018BEBAA2DBE247A0092B493 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		018BEBAB2DBE247A0092B493 /* Build configuration list for PBXNativeTarget "CanvoUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				018BEBAC2DBE247A0092B493 /* Debug */,
-				018BEBAD2DBE247A0092B493 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

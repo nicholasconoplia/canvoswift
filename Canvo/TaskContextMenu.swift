@@ -10,31 +10,37 @@ struct TaskContextMenu: View {
     let onChangePriority: () -> Void // Closure to trigger priority picker in parent
     let onDelete: () -> Void // Closure to trigger deletion in parent
 
-    // State for presenting sub-sheets (kept for future use)
-    // @State private var showingMoveSheet = false
-    // @State private var showingPrioritySheet = false
-    // @State private var showingNotesSheet = false
+    @State private var showingMoveSheet = false
+    @State private var selectedHeaderID: UUID? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Placeholder Buttons - Actions to be implemented
-            contextButton(title: "Move to Header", action: { /* TODO: Implement Move */ })
+            contextButton(title: "Move to Header", action: { showingMoveSheet = true })
             Divider()
             contextButton(title: "Change Priority", action: onChangePriority)
             Divider()
-            // Call the closure passed from the parent view
             contextButton(title: "Change Due Date", action: onChangeDueDate)
             Divider()
             contextButton(title: "Add/Edit Notes", action: onAddEditNotes)
             Divider()
             contextButton(title: "Delete", isDestructive: true, action: onDelete)
         }
-        .background(Color(.systemBackground)) // Use system background for light/dark mode
+        .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(radius: 10)
-        .frame(maxWidth: 300) // Limit width
-        .padding() // Padding around the VStack
-        // REMOVED: .sheet modifier was here
+        .frame(maxWidth: 300)
+        .padding()
+        .sheet(isPresented: $showingMoveSheet) {
+            MoveToHeaderSheet(
+                currentListID: listID,
+                taskLists: $taskLists,
+                onMove: { destListID in
+                    moveTaskToHeader(destListID: destListID)
+                    showingMoveSheet = false
+                    showingContextMenu = false
+                }
+            )
+        }
     }
 
     // Helper for creating menu buttons
@@ -47,6 +53,17 @@ struct TaskContextMenu: View {
         }
     }
 
+    // Helper for moving the task to another header
+    private func moveTaskToHeader(destListID: UUID) {
+        guard let sourceListIdx = taskLists.firstIndex(where: { $0.id == listID }),
+              let taskIdx = taskLists[sourceListIdx].tasks.firstIndex(where: { $0.id == task.id }),
+              let destListIdx = taskLists.firstIndex(where: { $0.id == destListID }) else { return }
+        let movingTask = taskLists[sourceListIdx].tasks.remove(at: taskIdx)
+        taskLists[destListIdx].tasks.append(movingTask)
+        DataManager.save(lists: taskLists)
+        NotificationCenter.default.post(name: Notification.Name("TaskListsUpdated"), object: nil)
+    }
+
     // --- Actions ---
 
     // TODO: Add functions for Move, Priority, Notes
@@ -54,6 +71,34 @@ struct TaskContextMenu: View {
     // REMOVED: datePickerSheet view was here
 
     // REMOVED: dismissContextMenu helper was here
+}
+
+// Sheet for selecting a header to move the task to
+struct MoveToHeaderSheet: View {
+    let currentListID: UUID
+    @Binding var taskLists: [TaskList]
+    let onMove: (UUID) -> Void
+
+    var body: some View {
+        NavigationView {
+            List {
+                ForEach(taskLists.filter { $0.id != currentListID }) { list in
+                    Button(list.name) {
+                        onMove(list.id)
+                    }
+                }
+            }
+            .navigationTitle("Move to Header")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                }
+            }
+        }
+    }
 }
 
 // Preview Provider (Optional - might need dummy data)
